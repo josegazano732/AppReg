@@ -28,6 +28,33 @@ npm install
 npm start
 ```
 
+## Deploy a GitHub Pages (checklist rapido)
+
+Este repo publica con GitHub Actions (no requiere rama `gh-pages`).
+
+1. Confirmar que el branch de trabajo sea `master` o `main`.
+2. Verificar que `Settings > Pages > Source` este en `GitHub Actions`.
+3. Ejecutar build local de Pages:
+
+```bash
+npm run build:pages
+```
+
+4. Hacer push del commit.
+5. Revisar workflow `Deploy GitHub Pages` en Actions.
+
+URL esperada del sitio:
+
+```text
+https://josegazano732.github.io/AppReg/
+```
+
+Errores comunes evitados en esta configuracion:
+
+- 404 en rutas internas: resuelto con `src/404.html` y restauracion de ruta en `src/index.html`.
+- Base href incorrecto: usar `--base-href=/AppReg/`.
+- Publicacion por rama equivocada: este repo usa artefacto de Actions, no branch `gh-pages`.
+
 ## Escalado a Supabase (futuro)
 
 1. Mantener `ConfigService` y `CajaService` como capa de aplicacion.
