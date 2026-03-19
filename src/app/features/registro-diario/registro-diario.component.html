@@ -1,0 +1,222 @@
+<section class="page-card p-4">
+  <h3 class="section-title">Registro diario de operaciones</h3>
+  <p class="section-subtitle">Combina multiples conceptos y medios de pago por registro con control automatico de sumas.</p>
+
+  <details class="inicio-panel" open>
+    <summary>
+      <span class="inicio-title">Inicio del dia</span>
+      <span class="inicio-summary-values">
+        Efectivo inicial: <strong>{{ inicioEfectivoDia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+        | Disponible estimado: <strong>{{ disponibleEfectivoEstimado | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </span>
+    </summary>
+
+    <div class="inicio-content">
+      <p class="start-reference" *ngIf="cierreBaseFecha; else sinCierreBase">
+        Inicio tomado del cierre: <strong>{{ cierreBaseFecha | date:'dd/MM/yyyy' }}</strong>
+        <span *ngIf="cierreBaseCreadoAt"> | Generado: <strong>{{ cierreBaseCreadoAt | date:'dd/MM/yyyy HH:mm' }}</strong></span>
+        <br>
+        ID cierre: <strong>{{ cierreBaseId }}</strong>
+      </p>
+
+      <ng-template #sinCierreBase>
+        <p class="start-reference empty">Sin cierre previo: el inicio efectivo se muestra en cero.</p>
+      </ng-template>
+
+      <section class="disponible-medios" *ngIf="disponibilidadPorMedio.length">
+        <div class="disponible-head">
+          <p class="inline-title mb-0">Disponible actual por medio de pago</p>
+          <small class="text-secondary">Inicio + ingresos - egresos del dia</small>
+        </div>
+
+        <div class="table-wrap disponible-table-wrap">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Medio</th>
+                <th class="text-end">Inicio</th>
+                <th class="text-end">Ingresos</th>
+                <th class="text-end">Egresos</th>
+                <th class="text-end">Neto dia</th>
+                <th class="text-end">Disponible</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of disponibilidadPorMedio">
+                <td><strong>{{ item.medio }}</strong></td>
+                <td class="text-end">{{ item.inicio | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+                <td class="text-end text-success">{{ item.ingresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+                <td class="text-end text-danger">{{ item.egresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+                <td class="text-end" [class.text-success]="item.movimientoNeto >= 0" [class.text-danger]="item.movimientoNeto < 0">
+                  {{ item.movimientoNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+                </td>
+                <td class="text-end" [class.text-success]="item.disponible >= 0" [class.text-danger]="item.disponible < 0">
+                  <strong>{{ item.disponible | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </details>
+
+  <form [formGroup]="registroForm" class="entry-grid registro-form" (ngSubmit)="addRegistro()">
+    <div class="span-3 form-toolbar">
+      <div>
+        <h4 class="form-toolbar-title">Nuevo registro</h4>
+        <p class="form-toolbar-subtitle">Carga conceptos y medios de pago en una sola operacion.</p>
+      </div>
+      <span class="balance-chip" [class.ok]="diferenciaActual === 0 && subtotalActual > 0" [class.warn]="diferenciaActual !== 0 || subtotalActual === 0">
+        {{ diferenciaActual === 0 && subtotalActual > 0 ? 'Balanceado para guardar' : 'Pendiente de balance' }}
+      </span>
+    </div>
+
+    <div class="form-field">
+      <label class="field-label" for="nroReciboInput">Nro recibo</label>
+      <input id="nroReciboInput" type="text" class="form-control" formControlName="nroRecibo" placeholder="Ej: 000123" autocomplete="off">
+      <small class="field-error" *ngIf="registroForm.get('nroRecibo')?.touched && registroForm.get('nroRecibo')?.invalid">Ingresa el numero de recibo.</small>
+    </div>
+
+    <div class="form-field">
+      <label class="field-label" for="nombreInput">Nombre /Dominio</label>
+      <input id="nombreInput" type="text" class="form-control" formControlName="nombre" placeholder="Ej: Juan Perez / AB123CD" autocomplete="off">
+      <small class="field-error" *ngIf="registroForm.get('nombre')?.touched && registroForm.get('nombre')?.invalid">Completa nombre o dominio de referencia.</small>
+    </div>
+
+    <div class="form-field readonly-field">
+      <label class="field-label" for="subtotalInput">Subtotal (automatico)</label>
+      <input id="subtotalInput" type="number" class="form-control" formControlName="subtotal" readonly>
+      <small class="field-hint">Se calcula con los conceptos cargados.</small>
+    </div>
+
+    <div class="form-field span-2">
+      <label class="field-label" for="observacionInput">Observacion</label>
+      <input id="observacionInput" type="text" class="form-control" formControlName="observacion" placeholder="Detalle adicional opcional" autocomplete="off">
+    </div>
+
+    <div class="span-3 detail-box" formArrayName="conceptosDetalle">
+      <div class="detail-head">
+        <h4>Conceptos del registro</h4>
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="addConceptoDetalle()">+ Agregar concepto</button>
+      </div>
+
+      <div class="detail-grid" *ngFor="let group of conceptosDetalle.controls; let i = index" [formGroupName]="i">
+        <span class="detail-index">#{{ i + 1 }}</span>
+        <select class="form-select" formControlName="concepto">
+          <option value="">Seleccionar concepto</option>
+          <option *ngFor="let c of conceptos" [value]="c">{{ c }}</option>
+        </select>
+        <input
+          type="text"
+          class="form-control importe-input"
+          formControlName="monto"
+          placeholder="Agregar importe"
+          inputmode="decimal"
+          autocomplete="off"
+          aria-label="Importe"
+          maxlength="22"
+          (focus)="onImporteFocus($event)"
+          (keydown)="onImporteKeydown($event)"
+          (input)="onConceptoImporteInput(i)"
+        >
+        <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeConceptoDetalle(i)">Quitar</button>
+      </div>
+    </div>
+
+    <div class="span-3 detail-box" formArrayName="pagosDetalle">
+      <div class="detail-head">
+        <h4>Medios de pago del registro</h4>
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="addPagoDetalle()">+ Agregar medio</button>
+      </div>
+
+      <div class="detail-grid" *ngFor="let group of pagosDetalle.controls; let i = index" [formGroupName]="i">
+        <span class="detail-index">#{{ i + 1 }}</span>
+        <select class="form-select" formControlName="medioPago">
+          <option *ngFor="let m of mediosDisponibles" [value]="m">{{ m }}</option>
+        </select>
+        <input
+          type="text"
+          class="form-control importe-input"
+          formControlName="monto"
+          placeholder="Agregar importe"
+          inputmode="decimal"
+          autocomplete="off"
+          aria-label="Importe"
+          maxlength="22"
+          (focus)="onImporteFocus($event)"
+          (keydown)="onImporteKeydown($event)"
+          (input)="onPagoImporteInput(i)"
+        >
+        <button type="button" class="btn btn-sm btn-outline-danger" (click)="removePagoDetalle(i)">Quitar</button>
+      </div>
+    </div>
+
+    <div class="span-3 summary-strip">
+      <div class="summary-item">
+        <span>Subtotal conceptos</span>
+        <strong>{{ subtotalActual | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </div>
+      <div class="summary-item">
+        <span>Total medios</span>
+        <strong>{{ totalPagosActual | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </div>
+      <div class="summary-item" [class.text-success]="diferenciaActual === 0" [class.text-danger]="diferenciaActual !== 0">
+        <span>Diferencia</span>
+        <strong>{{ diferenciaActual | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </div>
+    </div>
+
+    <div class="span-3 form-action">
+      <button type="button" class="btn btn-outline-secondary" (click)="resetRegistroForm()">Limpiar formulario</button>
+      <button type="submit" class="btn btn-primary" [disabled]="!canSubmit()">Agregar registro</button>
+    </div>
+  </form>
+
+  <div class="kpi-grid mt-3">
+    <article class="kpi-card" *ngFor="let m of mediosDisponibles">
+      <p class="kpi-label">Movimientos {{ m }}</p>
+      <p class="kpi-value">{{ getTotalForMedio(m) | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card final-card">
+      <p class="kpi-label">Total final de registros</p>
+      <p class="kpi-value">{{ totalFinalRegistros | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+  </div>
+
+  <div class="table-wrap mt-4" *ngIf="registros.length; else emptyState">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Recibo</th>
+          <th>Cliente</th>
+          <th>Conceptos</th>
+          <th>Pagos combinados</th>
+          <th class="text-end">Subtotal</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of registros">
+          <td>{{ r.createdAt | date:'short' }}</td>
+          <td>{{ r.nroRecibo }}</td>
+          <td>{{ r.nombre }}</td>
+          <td>{{ formatConceptos(r) }}</td>
+          <td>{{ formatPagos(r) }}</td>
+          <td class="text-end">{{ r.subtotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeRegistro(r.id)">Eliminar</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #emptyState>
+    <div class="empty-box mt-4">
+      <h4>Sin movimientos cargados</h4>
+      <p>Agrega el primer registro para generar control de caja y cierre diario.</p>
+    </div>
+  </ng-template>
+</section>

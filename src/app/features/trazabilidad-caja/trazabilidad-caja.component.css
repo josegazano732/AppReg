@@ -1,0 +1,132 @@
+.trazabilidad-shell {
+  background:
+    radial-gradient(1200px 320px at 100% -10%, rgba(14, 116, 144, 0.11), transparent 60%),
+    radial-gradient(900px 240px at 0% 0%, rgba(245, 158, 11, 0.12), transparent 55%),
+    #fff;
+}
+
+.head-wrap {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.filtro-wrap {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr)) auto;
+  gap: 0.6rem;
+  align-items: end;
+  min-width: 440px;
+}
+
+.table-block {
+  border: 1px solid var(--border-soft);
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #fff;
+}
+
+.table-head {
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-soft);
+  background: linear-gradient(180deg, #f8fbff, #f3f7fd);
+}
+
+.table-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.table-head-meta {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+.audit-box {
+  margin: 0.9rem 1rem 0;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.86rem;
+}
+
+.audit-ok {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.audit-warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.medium,
+.table {
+  min-width: 980px;
+}
+
+.text-emerald {
+  color: #047857;
+}
+
+.kpi-positive {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.kpi-negative {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.medio-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  max-width: 360px;
+}
+
+.medio-chip {
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.medio-chip.pos {
+  color: #166534;
+  background: #dcfce7;
+  border-color: #bbf7d0;
+}
+
+.medio-chip.neg {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
+@media (max-width: 1080px) {
+  .head-wrap {
+    flex-direction: column;
+  }
+
+  .filtro-wrap {
+    min-width: 100%;
+    grid-template-columns: 1fr;
+  }
+}

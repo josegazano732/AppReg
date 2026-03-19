@@ -1,0 +1,224 @@
+<section class="page-card p-4 trazabilidad-shell">
+  <div class="head-wrap">
+    <div>
+      <h3 class="section-title">Trazabilidad de caja por medio de pago</h3>
+      <p class="section-subtitle mb-0">
+        Correlatividad integral entre registros diarios, ingresos de caja, egresos y cierres para validar disponible por medio de pago.
+      </p>
+    </div>
+
+    <div class="filtro-wrap">
+      <label class="form-label mb-0">
+        Desde
+        <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaDesde" (change)="onRangoChange()">
+      </label>
+
+      <label class="form-label mb-0">
+        Hasta
+        <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaHasta" (change)="onRangoChange()">
+      </label>
+
+      <button type="button" class="btn btn-outline-primary btn-sm" (click)="usarMesActual()">Mes actual</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid mt-3">
+    <article class="kpi-card">
+      <p class="kpi-label">Dias con movimientos</p>
+      <p class="kpi-value">{{ kpiDias }}</p>
+    </article>
+
+    <article class="kpi-card">
+      <p class="kpi-label">Dias cerrados</p>
+      <p class="kpi-value">{{ kpiCierres }}</p>
+    </article>
+
+    <article class="kpi-card">
+      <p class="kpi-label">Movimientos totales</p>
+      <p class="kpi-value">{{ kpiMovimientos }}</p>
+    </article>
+
+    <article class="kpi-card">
+      <p class="kpi-label">Ingresos del periodo</p>
+      <p class="kpi-value">{{ kpiIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+
+    <article class="kpi-card">
+      <p class="kpi-label">Egresos del periodo</p>
+      <p class="kpi-value">{{ kpiEgresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+
+    <article class="kpi-card" [class.kpi-positive]="kpiNeto >= 0" [class.kpi-negative]="kpiNeto < 0">
+      <p class="kpi-label">Neto del periodo</p>
+      <p class="kpi-value">{{ kpiNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+
+    <article class="kpi-card" [class.kpi-positive]="kpiAlertasContinuidad === 0" [class.kpi-negative]="kpiAlertasContinuidad > 0">
+      <p class="kpi-label">Alertas continuidad</p>
+      <p class="kpi-value">{{ kpiAlertasContinuidad }}</p>
+    </article>
+  </div>
+
+  <article class="table-block mt-4">
+    <div class="table-head">
+      <h4>Auditoria de continuidad de efectivo</h4>
+      <span class="chip" [class.ok]="!alertasContinuidad.length" [class.warn]="alertasContinuidad.length">
+        {{ alertasContinuidad.length ? 'Requiere revision' : 'Conciliado' }}
+      </span>
+    </div>
+
+    <div class="audit-box" [class.audit-ok]="!alertasContinuidad.length" [class.audit-warn]="alertasContinuidad.length">
+      <p class="mb-0" *ngIf="!alertasContinuidad.length">
+        No se detectaron diferencias en la cadena de continuidad. El disponible informado en cierres coincide con el calculo esperado.
+      </p>
+      <p class="mb-0" *ngIf="alertasContinuidad.length">
+        Se detectaron diferencias entre el disponible esperado e informado en algunos cierres. Revisar los cierres listados abajo.
+      </p>
+    </div>
+
+    <div class="table-wrap" *ngIf="alertasContinuidad.length">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>ID cierre</th>
+            <th class="text-end">Esperado</th>
+            <th class="text-end">Informado</th>
+            <th class="text-end">Diferencia</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let alerta of alertasContinuidad">
+            <td>{{ alerta.fecha | date:'dd/MM/yyyy' }}</td>
+            <td><small>{{ alerta.cierreId }}</small></td>
+            <td class="text-end">{{ alerta.esperado | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">{{ alerta.informado | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end text-danger"><strong>{{ alerta.diferencia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="table-block mt-4">
+    <div class="table-head">
+      <div>
+        <h4>Correlatividad por medio de pago</h4>
+        <small class="table-head-meta" *ngIf="cierreBaseCorrelatividad; else sinCierreBaseCorrelatividad">
+          Saldo inicial base: cierre {{ cierreBaseCorrelatividad.fecha | date:'dd/MM/yyyy' }}
+          <span *ngIf="cierreBaseCorrelatividad.createdAt"> | generado {{ cierreBaseCorrelatividad.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
+          | ID {{ cierreBaseCorrelatividad.id }}
+        </small>
+        <ng-template #sinCierreBaseCorrelatividad>
+          <small class="table-head-meta">Saldo inicial base: sin cierre previo (se toma 0).</small>
+        </ng-template>
+      </div>
+      <span class="chip ok">Disponible trazado</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Medio de pago</th>
+            <th class="text-end">Saldo inicial</th>
+            <th class="text-end">Ingresos</th>
+            <th class="text-end">Egresos</th>
+            <th class="text-end">Neto</th>
+            <th class="text-end">Saldo final</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of correlatividad; trackBy: trackByMedio">
+            <td><strong>{{ item.medioPago }}</strong></td>
+            <td class="text-end">{{ item.saldoInicial | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end text-emerald">{{ item.ingresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end text-danger">{{ item.egresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end" [class.text-emerald]="item.neto >= 0" [class.text-danger]="item.neto < 0">
+              {{ item.neto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+            </td>
+            <td class="text-end" [class.text-emerald]="item.saldoFinal >= 0" [class.text-danger]="item.saldoFinal < 0">
+              <strong>{{ item.saldoFinal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+            </td>
+          </tr>
+
+          <tr *ngIf="!correlatividad.length">
+            <td colspan="6" class="text-center text-secondary py-4">No hay datos para el rango seleccionado.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="table-block mt-4">
+    <div class="table-head">
+      <h4>Detalle diario consolidado</h4>
+      <span class="chip ok">Historial completo por cierre</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha operativa</th>
+            <th>Fecha y hora cierre</th>
+            <th>ID cierre</th>
+            <th>Estado</th>
+            <th class="text-end">Registros</th>
+            <th class="text-end">Ingresos caja</th>
+            <th class="text-end">Egresos caja</th>
+            <th class="text-end">Ingresos</th>
+            <th class="text-end">Egresos</th>
+            <th class="text-end">Neto</th>
+            <th class="text-end">Disponible continuidad</th>
+            <th>Movimientos por medio</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let dia of detalleConsolidado; trackBy: trackByCierre">
+            <td>{{ dia.fecha | date:'dd/MM/yyyy' }}</td>
+            <td>{{ dia.cierreCreadoAt | date:'dd/MM/yyyy HH:mm' }}</td>
+            <td><small>{{ dia.cierreId }}</small></td>
+            <td>
+              <span class="chip" [class.ok]="dia.estado === 'CERRADO'" [class.warn]="dia.estado === 'ABIERTO'">
+                {{ dia.estado }}
+              </span>
+            </td>
+            <td class="text-end">{{ dia.registros }}</td>
+            <td class="text-end">{{ dia.ingresosCaja }}</td>
+            <td class="text-end">{{ dia.egresosCaja }}</td>
+            <td class="text-end">{{ dia.ingresosTotales | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">{{ dia.egresosTotales | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end" [class.text-emerald]="dia.neto >= 0" [class.text-danger]="dia.neto < 0">
+              {{ dia.neto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+            </td>
+            <td class="text-end">
+              <ng-container *ngIf="dia.disponibleContinuidad !== null; else continuidadPendiente">
+                {{ dia.disponibleContinuidad | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+              </ng-container>
+              <ng-template #continuidadPendiente>
+                <span class="text-secondary">Pendiente</span>
+              </ng-template>
+            </td>
+            <td>
+              <div class="medio-badges">
+                <span
+                  class="medio-chip"
+                  *ngFor="let medio of dia.detalleMedios; trackBy: trackByMedio"
+                  [class.pos]="medio.saldo >= 0"
+                  [class.neg]="medio.saldo < 0"
+                >
+                  {{ medio.medioPago }}: {{ medio.saldo | currency:'ARS':'symbol':'1.0-0':'es-AR' }}
+                </span>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngIf="!detalleConsolidado.length">
+            <td colspan="12" class="text-center text-secondary py-4">No hay cierres registrados en el historial.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>

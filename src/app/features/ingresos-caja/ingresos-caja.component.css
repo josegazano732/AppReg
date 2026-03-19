@@ -1,0 +1,65 @@
+.top-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px);
+  gap: 0.9rem;
+}
+
+.top-controls label,
+.ingreso-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.ingreso-form {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.actions {
+  align-self: end;
+}
+
+.table-wrap {
+  border-radius: 0.9rem;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+}
+
+.table-wrap thead {
+  background: #f8fafc;
+}
+
+.empty-box {
+  border: 1px dashed #94a3b8;
+  border-radius: 0.9rem;
+  padding: 1.25rem;
+  background: #f8fafc;
+}
+
+.empty-box h4 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.empty-box p {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+}
+
+@media (max-width: 991px) {
+  .ingreso-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .ingreso-form {
+    grid-template-columns: 1fr;
+  }
+}

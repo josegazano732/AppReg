@@ -1,0 +1,106 @@
+<section class="page-card p-4">
+  <h3 class="section-title">Ingresos de caja</h3>
+  <p class="section-subtitle">Registra ingresos por tipo, concepto, monto, medio de pago, observacion y comprobante para impactar en la caja del dia seleccionado.</p>
+
+  <div class="top-controls">
+    <label>
+      Fecha de caja
+      <input type="date" class="form-control" [(ngModel)]="fechaSeleccionada" (change)="onFechaChange()">
+    </label>
+  </div>
+
+  <form [formGroup]="form" class="ingreso-form" (ngSubmit)="addIngreso()">
+    <label>
+      Tipo de ingreso
+      <select class="form-select" formControlName="tipoIngreso">
+        <option *ngFor="let tipo of tiposIngreso" [value]="tipo">{{ tipo }}</option>
+      </select>
+    </label>
+
+    <label>
+      Concepto
+      <input type="text" class="form-control" formControlName="concepto" placeholder="Ej: Cobro de tramite o ajuste de caja">
+    </label>
+
+    <label>
+      Monto
+      <input type="number" class="form-control" formControlName="monto" min="0.01" step="0.01">
+    </label>
+
+    <label>
+      Medio de pago afectado
+      <select class="form-select" formControlName="medioPago">
+        <option *ngFor="let medio of medios" [value]="medio">{{ medio }}</option>
+      </select>
+    </label>
+
+    <label>
+      Observacion
+      <input type="text" class="form-control" formControlName="observacion" placeholder="Detalle opcional del ingreso">
+    </label>
+
+    <label>
+      Comprobante
+      <input type="text" class="form-control" formControlName="comprobante" placeholder="Nro de comprobante / recibo">
+    </label>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Registrar ingreso</button>
+    </div>
+  </form>
+
+  <div class="kpi-grid mt-4">
+    <article class="kpi-card">
+      <p class="kpi-label">Ingresos del dia</p>
+      <p class="kpi-value">{{ cajaDia.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Egresos del dia</p>
+      <p class="kpi-value">{{ cajaDia.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Caja neta del dia</p>
+      <p class="kpi-value">{{ cajaDia.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Saldo efectivo del dia</p>
+      <p class="kpi-value">{{ cajaDia.saldo.efectivo | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+  </div>
+
+  <div class="table-wrap mt-4" *ngIf="ingresosDia.length; else noIngresos">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Concepto</th>
+          <th>Medio</th>
+          <th>Observacion</th>
+          <th>Comprobante</th>
+          <th class="text-end">Monto</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let ingreso of ingresosDia">
+          <td>{{ ingreso.tipoIngreso || '-' }}</td>
+          <td>{{ ingreso.concepto }}</td>
+          <td>{{ ingreso.medioPago || 'EFECTIVO' }}</td>
+          <td>{{ ingreso.observacion || '-' }}</td>
+          <td>{{ ingreso.comprobante || '-' }}</td>
+          <td class="text-end">{{ ingreso.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeIngreso(ingreso.id)">Eliminar</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #noIngresos>
+    <div class="empty-box mt-4">
+      <h4>Sin ingresos para esta fecha</h4>
+      <p>Registra un ingreso para impactar la caja del dia seleccionado.</p>
+    </div>
+  </ng-template>
+</section>

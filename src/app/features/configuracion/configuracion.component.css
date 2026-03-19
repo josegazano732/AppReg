@@ -1,0 +1,47 @@
+.config-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
+}
+
+.config-panel {
+	border: 1px solid var(--border-soft);
+	border-radius: 0.9rem;
+	padding: 1rem;
+	background: #fcfdff;
+}
+
+.config-panel h4 {
+	margin: 0 0 0.8rem;
+	font-size: 1rem;
+}
+
+.input-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 0.5rem;
+	margin-bottom: 0.8rem;
+}
+
+.config-panel ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.45rem;
+}
+
+.config-panel li {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.8rem;
+	padding-top: 0.45rem;
+	border-top: 1px dashed #dbe4f0;
+}
+
+@media (max-width: 991px) {
+	.config-grid {
+		grid-template-columns: 1fr;
+	}
+}

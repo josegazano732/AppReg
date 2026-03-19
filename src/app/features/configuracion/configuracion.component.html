@@ -1,0 +1,62 @@
+<section class="page-card p-4">
+  <h3 class="section-title">Configuracion del sistema</h3>
+  <p class="section-subtitle">Administra catalogos locales listos para migrar a backend en el futuro.</p>
+
+  <div class="config-grid">
+    <article class="config-panel">
+      <h4>Conceptos</h4>
+      <div class="input-row">
+        <input class="form-control" [(ngModel)]="nuevoConcepto" placeholder="Nuevo concepto">
+        <button class="btn btn-primary" type="button" (click)="addConcepto()">Agregar</button>
+      </div>
+      <ul>
+        <li *ngFor="let c of conceptos; let i = index">
+          <span>{{ c }}</span>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeConcepto(i)">Eliminar</button>
+        </li>
+      </ul>
+    </article>
+
+    <article class="config-panel">
+      <h4>Medios de pago</h4>
+      <div class="input-row">
+        <input class="form-control" [(ngModel)]="nuevoMedio" placeholder="Nuevo medio de pago">
+        <button class="btn btn-primary" type="button" (click)="addMedio()">Agregar</button>
+      </div>
+      <ul>
+        <li *ngFor="let m of medios; let i = index">
+          <span>{{ m }}</span>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeMedio(i)">Eliminar</button>
+        </li>
+      </ul>
+    </article>
+
+    <article class="config-panel">
+      <h4>Tipos de salida</h4>
+      <div class="input-row">
+        <input class="form-control" [(ngModel)]="nuevoTipoSalida" placeholder="Nuevo tipo de salida">
+        <button class="btn btn-primary" type="button" (click)="addTipoSalida()">Agregar</button>
+      </div>
+      <ul>
+        <li *ngFor="let t of tiposSalida; let i = index">
+          <span>{{ t }}</span>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeTipoSalida(i)">Eliminar</button>
+        </li>
+      </ul>
+    </article>
+
+    <article class="config-panel">
+      <h4>Tipos de ingreso</h4>
+      <div class="input-row">
+        <input class="form-control" [(ngModel)]="nuevoTipoIngreso" placeholder="Nuevo tipo de ingreso">
+        <button class="btn btn-primary" type="button" (click)="addTipoIngreso()">Agregar</button>
+      </div>
+      <ul>
+        <li *ngFor="let t of tiposIngreso; let i = index">
+          <span>{{ t }}</span>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeTipoIngreso(i)">Eliminar</button>
+        </li>
+      </ul>
+    </article>
+  </div>
+</section>

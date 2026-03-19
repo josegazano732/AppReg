@@ -1,0 +1,115 @@
+<section class="page-card p-4">
+  <h3 class="section-title">Egresos de caja</h3>
+  <p class="section-subtitle">Registra salidas de dinero por retiro de efectivo, deposito bancario o gastos varios, indicando medio de pago, observacion y comprobante.</p>
+
+  <div class="top-controls">
+    <label>
+      Fecha de caja
+      <input type="date" class="form-control" [(ngModel)]="fechaSeleccionada" (change)="onFechaChange()">
+    </label>
+  </div>
+
+  <form [formGroup]="form" class="gasto-form" (ngSubmit)="addGasto()">
+    <label>
+      Tipo de salida
+      <select class="form-select" formControlName="tipoEgreso">
+        <option *ngFor="let tipo of tiposEgreso" [value]="tipo">{{ tipo }}</option>
+      </select>
+    </label>
+
+    <label>
+      Concepto / detalle
+      <input type="text" class="form-control" formControlName="descripcion" placeholder="Ej: Retiro para gastos operativos o deposito en banco">
+    </label>
+
+    <label>
+      Monto
+      <input type="number" class="form-control" formControlName="monto" min="0.01" step="0.01">
+    </label>
+
+    <label>
+      Medio de pago utilizado para la salida
+      <select class="form-select" formControlName="medioPago">
+        <option *ngFor="let medio of medios" [value]="medio">{{ medio }}</option>
+      </select>
+    </label>
+
+    <div class="disponible-box" [class.warn]="disponibleInsuficiente" [class.ok]="!disponibleInsuficiente">
+      <p class="kpi-label mb-1">Disponible para egresar ({{ medioSeleccionado }})</p>
+      <p class="disponible-value mb-1">{{ disponibleMedioSeleccionado | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+      <small class="text-secondary" *ngIf="!disponibleInsuficiente">Puedes registrar el egreso si el monto no supera este disponible.</small>
+      <small class="text-danger" *ngIf="disponibleInsuficiente">
+        Disponibilidad insuficiente. Faltan {{ faltanteParaEgreso | currency:'ARS':'symbol':'1.2-2':'es-AR' }} para completar este egreso.
+      </small>
+    </div>
+
+    <label>
+      Observacion
+      <input type="text" class="form-control" formControlName="observacion" placeholder="Detalle del motivo del gasto">
+    </label>
+
+    <label>
+      Comprobante o factura
+      <input type="text" class="form-control" formControlName="comprobante" placeholder="Nro de comprobante o factura">
+    </label>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary" [disabled]="form.invalid || !tieneDisponibilidadParaEgreso()">Registrar gasto</button>
+    </div>
+  </form>
+
+  <div class="kpi-grid mt-4">
+    <article class="kpi-card">
+      <p class="kpi-label">Ingresos del dia</p>
+      <p class="kpi-value">{{ cajaDia.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Egresos del dia</p>
+      <p class="kpi-value">{{ cajaDia.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Caja neta del dia</p>
+      <p class="kpi-value">{{ cajaDia.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Saldo efectivo del dia</p>
+      <p class="kpi-value">{{ cajaDia.saldo.efectivo | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+  </div>
+
+  <div class="table-wrap mt-4" *ngIf="gastosDia.length; else noGastos">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Motivo</th>
+          <th>Medio</th>
+          <th>Observacion</th>
+          <th>Comprobante</th>
+          <th class="text-end">Monto</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let gasto of gastosDia">
+          <td>{{ getTipoLabel(gasto.tipoEgreso) }}</td>
+          <td>{{ gasto.descripcion }}</td>
+          <td>{{ gasto.medioPago || 'EFECTIVO' }}</td>
+          <td>{{ gasto.observacion || '-' }}</td>
+          <td>{{ gasto.comprobante || '-' }}</td>
+          <td class="text-end">{{ gasto.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeGasto(gasto.id)">Eliminar</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #noGastos>
+    <div class="empty-box mt-4">
+      <h4>Sin egresos para esta fecha</h4>
+      <p>Registra una salida para descontarla automaticamente de la caja del dia seleccionado.</p>
+    </div>
+  </ng-template>
+</section>

@@ -1,0 +1,145 @@
+<section class="page-card p-4">
+  <h3 class="section-title">Cierre diario</h3>
+  <p class="section-subtitle">Visualiza movimientos del dia, realiza el cierre operativo y guarda historial mensual con referencias de movimientos.</p>
+
+  <div class="filters-row">
+    <div class="readonly-box">
+      <span>Fecha de cierre (automatica)</span>
+      <strong>{{ fechaSeleccionada }}</strong>
+    </div>
+
+    <div class="readonly-box">
+      <span>Mes de reporte (automatico)</span>
+      <strong>{{ mesSeleccionado }}</strong>
+    </div>
+  </div>
+
+  <div class="kpi-grid mt-3">
+    <article class="kpi-card">
+      <p class="kpi-label">Saldo inicial continuidad</p>
+      <p class="kpi-value">{{ saldoInicialDia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Cortes del dia</p>
+      <p class="kpi-value">{{ cantidadCierresDia }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Ingresos del dia</p>
+      <p class="kpi-value">{{ resumenCaja.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Egresos del dia</p>
+      <p class="kpi-value">{{ resumenCaja.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Neto del dia</p>
+      <p class="kpi-value">{{ resumenCaja.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+  </div>
+
+  <div class="movements-grid mt-4">
+    <article class="panel">
+      <h4>Registros del dia ({{ registrosDia.length }})</h4>
+      <ul *ngIf="registrosDia.length; else noRegistros">
+        <li *ngFor="let r of registrosDia">{{ r.nroRecibo }} - {{ r.nombre }} - {{ r.subtotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</li>
+      </ul>
+      <ng-template #noRegistros><p class="empty-text">Sin registros para esta fecha.</p></ng-template>
+    </article>
+
+    <article class="panel">
+      <h4>Ingresos manuales ({{ ingresosDia.length }})</h4>
+      <ul *ngIf="ingresosDia.length; else noIngresos">
+        <li *ngFor="let i of ingresosDia">{{ i.tipoIngreso || '-' }} - {{ i.concepto }} - {{ i.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</li>
+      </ul>
+      <ng-template #noIngresos><p class="empty-text">Sin ingresos manuales para esta fecha.</p></ng-template>
+    </article>
+
+    <article class="panel">
+      <h4>Egresos del dia ({{ egresosDia.length }})</h4>
+      <ul *ngIf="egresosDia.length; else noEgresos">
+        <li *ngFor="let g of egresosDia">{{ g.tipoEgreso || '-' }} - {{ g.descripcion }} - {{ g.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</li>
+      </ul>
+      <ng-template #noEgresos><p class="empty-text">Sin egresos para esta fecha.</p></ng-template>
+    </article>
+  </div>
+
+  <article class="panel mt-4">
+    <div class="detail-header">
+      <h4 class="mb-0">Detalle del cierre por medio de pago</h4>
+      <span class="chip" [class.ok]="!!cierreExistente">{{ cierreExistente ? 'Snapshot del cierre' : 'Previsualizacion del dia' }}</span>
+    </div>
+    <div class="table-wrap mt-2" *ngIf="detalleMedios.length; else noDetalleMedios">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Medio de pago</th>
+            <th class="text-end">Ingresos</th>
+            <th class="text-end">Egresos</th>
+            <th class="text-end">Saldo neto</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let d of detalleMedios">
+            <td>{{ d.medioPago }}</td>
+            <td class="text-end">{{ d.ingresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">{{ d.egresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end" [class.text-danger]="d.saldo < 0" [class.text-success]="d.saldo > 0">
+              {{ d.saldo | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ng-template #noDetalleMedios><p class="empty-text">No hay importes por medio de pago para esta fecha.</p></ng-template>
+  </article>
+
+  <article class="panel mt-4">
+    <h4>Cierre operativo del dia</h4>
+    <div class="close-form">
+      <p class="chip ok" *ngIf="cierreExistente">Ultimo corte del dia: {{ cierreExistente.fecha }} {{ cierreExistente.createdAt | date:'HH:mm' }}</p>
+      <div class="readonly-box">
+        <span>Disponible continuidad proyectado para nuevo corte</span>
+        <strong>{{ disponibleContinuidad | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </div>
+      <label>
+        Observacion del corte
+        <input type="text" class="form-control" [(ngModel)]="observacionCierre" placeholder="Detalle del corte actual">
+      </label>
+      <div class="actions-row">
+        <button class="btn btn-outline-primary" type="button" (click)="generarPdfConciliacionPrevia()">Generar PDF de conciliacion</button>
+        <button class="btn btn-primary" type="button" (click)="cerrarCaja()">Registrar nuevo corte</button>
+      </div>
+    </div>
+
+    <p *ngIf="cierreMensaje" class="mt-2 mb-0"><strong>{{ cierreMensaje }}</strong></p>
+  </article>
+
+  <article class="panel mt-4">
+    <h4>Reporte mensual de cierres</h4>
+    <div class="table-wrap" *ngIf="cierresMensuales.length; else noCierresMes">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th class="text-end">Ingresos</th>
+            <th class="text-end">Egresos</th>
+            <th class="text-end">Neto</th>
+            <th class="text-end">Disp. continuidad</th>
+            <th class="text-end">Movimientos</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let c of cierresMensuales">
+            <td>{{ c.fecha }}</td>
+            <td class="text-end">{{ c.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">{{ c.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">{{ c.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">{{ c.disponibleContinuidad | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end">R: {{ c.resumenMovimientos.registros }} | I: {{ c.resumenMovimientos.ingresos }} | E: {{ c.resumenMovimientos.egresos }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ng-template #noCierresMes><p class="empty-text">No hay cierres registrados para el mes seleccionado.</p></ng-template>
+  </article>
+</section>

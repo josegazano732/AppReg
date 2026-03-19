@@ -1,0 +1,101 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+:root {
+  --surface-1: #f4f7fb;
+  --surface-2: #ffffff;
+  --ink-1: #0f172a;
+  --ink-2: #334155;
+  --brand: #0e7490;
+  --brand-strong: #155e75;
+  --accent: #f59e0b;
+  --border-soft: #dce3ef;
+  --ok: #15803d;
+  --danger: #b91c1c;
+  --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  color: var(--ink-1);
+  background: var(--surface-1);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: Manrope, 'Segoe UI', sans-serif;
+}
+
+.page-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.section-title {
+  margin-bottom: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink-1);
+}
+
+.section-subtitle {
+  color: var(--ink-2);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.9rem;
+}
+
+.kpi-card {
+  border-radius: 0.9rem;
+  border: 1px solid var(--border-soft);
+  padding: 0.9rem;
+  background: #f8fbff;
+}
+
+.kpi-label {
+  margin: 0;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.kpi-value {
+  margin: 0.35rem 0 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chip.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.chip.warn {
+  background: #fef3c7;
+  color: #92400e;
+}

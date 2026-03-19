@@ -1,0 +1,120 @@
+<section class="page-card p-4">
+  <div class="hero-shell">
+    <article class="hero-main">
+      <p class="hero-eyebrow">Panel ejecutivo</p>
+      <h3 class="hero-title">Apertura y control operativo de caja</h3>
+      <p class="hero-copy">Visualiza el capital de inicio, actividad del dia y tipo de cambio para decisiones rapidas.</p>
+      <div class="hero-total">
+        <span>Importe inicial total</span>
+        <strong>{{ inicioTotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </div>
+    </article>
+
+    <article class="hero-side">
+      <div class="clock-card">
+        <p class="clock-label">Fecha operativa</p>
+        <p class="clock-date">{{ now | date:'EEEE d MMMM y' }}</p>
+        <p class="clock-hour">{{ now | date:'HH:mm:ss' }}</p>
+      </div>
+
+      <div class="weather-card">
+        <div class="weather-head">
+          <div>
+            <p class="kpi-label mb-0">Clima actual</p>
+            <p class="weather-city">{{ clima.ciudad }}</p>
+          </div>
+          <button class="btn btn-sm btn-light fx-button" type="button" (click)="fetchClimaActual()" [disabled]="climaLoading">Actualizar</button>
+        </div>
+
+        <div class="weather-main" *ngIf="!climaError; else weatherErrorTpl">
+          <div class="weather-temp">
+            <strong>{{ (clima.temp ?? 0) | number:'1.0-1' }}°C</strong>
+            <span>{{ clima.descripcion || 'Sin dato' }}</span>
+          </div>
+          <img *ngIf="clima.icono" [src]="'https://openweathermap.org/img/wn/' + clima.icono + '@2x.png'" alt="Icono clima" width="52" height="52">
+        </div>
+
+        <div class="weather-meta" *ngIf="!climaError">
+          <span>Sensacion: <strong>{{ (clima.sensacion ?? 0) | number:'1.0-1' }}°C</strong></span>
+          <span>Humedad: <strong>{{ clima.humedad ?? 0 }}%</strong></span>
+          <span>Viento: <strong>{{ (clima.viento ?? 0) | number:'1.0-1' }} m/s</strong></span>
+        </div>
+        <p class="fx-date mb-0" *ngIf="!climaError">Actualizado: {{ clima.actualizado | date:'short' }}</p>
+
+        <ng-template #weatherErrorTpl>
+          <p class="fx-error mb-0">{{ climaError }}</p>
+        </ng-template>
+      </div>
+
+      <div class="fx-card">
+        <div class="fx-head">
+          <div>
+            <p class="kpi-label mb-0">Dolar {{ dolarBna.fuente }}</p>
+            <p class="fx-date">Actualizado: {{ dolarBna.fecha | date:'short' }}</p>
+          </div>
+          <button class="btn btn-sm btn-light fx-button" type="button" (click)="fetchDolarBna()" [disabled]="dolarLoading">Actualizar</button>
+        </div>
+        <div class="fx-values">
+          <article>
+            <span>Compra</span>
+            <strong>{{ (dolarBna.compra || 0) | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+          </article>
+          <article>
+            <span>Venta</span>
+            <strong>{{ (dolarBna.venta || 0) | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+          </article>
+        </div>
+        <p class="fx-error" *ngIf="dolarError">{{ dolarError }}</p>
+      </div>
+    </article>
+  </div>
+
+  <article class="start-box mt-4">
+    <div class="start-box-head">
+      <h4>Inicio de caja por medio de pago</h4>
+      <span class="chip ok">Hoy</span>
+    </div>
+    <p class="start-reference" *ngIf="cierreReferenciaFecha; else sinCierreReferencia">
+      Saldo inicial tomado del cierre: <strong>{{ cierreReferenciaFecha | date:'dd/MM/yyyy' }}</strong>
+      (Disponible continuidad: <strong>{{ cierreReferenciaDisponible | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>)
+      <br>
+      ID cierre: <strong>{{ cierreReferenciaId }}</strong>
+      <span *ngIf="cierreReferenciaCreadoAt"> | Generado: <strong>{{ cierreReferenciaCreadoAt | date:'dd/MM/yyyy HH:mm' }}</strong></span>
+    </p>
+
+    <ng-template #sinCierreReferencia>
+      <p class="start-reference empty">Sin cierre previo: el inicio de caja se muestra en cero.</p>
+    </ng-template>
+
+    <div class="start-grid">
+      <article class="start-item" *ngFor="let item of inicioPorMedio">
+        <p>{{ item.medio }}</p>
+        <strong>{{ item.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+      </article>
+    </div>
+  </article>
+
+  <div class="kpi-grid mt-4 business-kpis">
+    <article class="kpi-card">
+      <p class="kpi-label">Registros del dia</p>
+      <p class="kpi-value">{{ cantidadRegistros }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Total cargado hoy</p>
+      <p class="kpi-value">{{ totalDia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Conceptos configurados</p>
+      <p class="kpi-value">{{ conceptos }}</p>
+    </article>
+    <article class="kpi-card">
+      <p class="kpi-label">Medios habilitados</p>
+      <p class="kpi-value">{{ medios }}</p>
+    </article>
+  </div>
+
+  <article class="latest-box mt-4" *ngIf="ultimoRegistro as r">
+    <p class="mb-1"><strong>Ultimo registro:</strong> {{ r.nroRecibo }} - {{ r.nombre }}</p>
+    <p class="mb-0 text-secondary">{{ r.createdAt | date:'short' }} | {{ r.medioPago || 'EFECTIVO' }} | {{ r.subtotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+  </article>
+</section>
