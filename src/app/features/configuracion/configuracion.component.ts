@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ConfigService } from '../../core/services/config.service';
 
+type CatalogoKey = 'conceptos' | 'medios' | 'tiposSalida' | 'tiposIngreso';
+
 @Component({
   selector: 'app-configuracion',
   standalone: true,
@@ -20,6 +22,27 @@ export class ConfiguracionComponent implements OnInit {
   nuevoMedio = '';
   nuevoTipoSalida = '';
   nuevoTipoIngreso = '';
+
+  editIndex: Record<CatalogoKey, number | null> = {
+    conceptos: null,
+    medios: null,
+    tiposSalida: null,
+    tiposIngreso: null
+  };
+
+  editValue: Record<CatalogoKey, string> = {
+    conceptos: '',
+    medios: '',
+    tiposSalida: '',
+    tiposIngreso: ''
+  };
+
+  editError: Record<CatalogoKey, string> = {
+    conceptos: '',
+    medios: '',
+    tiposSalida: '',
+    tiposIngreso: ''
+  };
 
   constructor(private cfg: ConfigService) {}
 
@@ -76,5 +99,61 @@ export class ConfiguracionComponent implements OnInit {
 
   removeTipoIngreso(i: number) {
     this.cfg.removeTipoIngreso(i);
+  }
+
+  startEdit(section: CatalogoKey, index: number, value: string) {
+    this.editIndex[section] = index;
+    this.editValue[section] = value;
+    this.editError[section] = '';
+  }
+
+  cancelEdit(section: CatalogoKey) {
+    this.editIndex[section] = null;
+    this.editValue[section] = '';
+    this.editError[section] = '';
+  }
+
+  saveEdit(section: CatalogoKey, index: number) {
+    const raw = (this.editValue[section] || '').trim();
+    if (!raw) {
+      this.editError[section] = 'El nombre no puede estar vacio.';
+      return;
+    }
+
+    const nextValue = raw.toUpperCase();
+    const currentList = this.getList(section);
+    const hasDuplicate = currentList.some((item, i) => i !== index && String(item || '').trim().toUpperCase() === nextValue);
+    if (hasDuplicate) {
+      this.editError[section] = 'Ya existe un valor con ese nombre.';
+      return;
+    }
+
+    const nextList = [...currentList];
+    nextList[index] = nextValue;
+    this.updateSection(section, nextList);
+    this.cancelEdit(section);
+  }
+
+  private getList(section: CatalogoKey): string[] {
+    if (section === 'conceptos') return this.conceptos;
+    if (section === 'medios') return this.medios;
+    if (section === 'tiposSalida') return this.tiposSalida;
+    return this.tiposIngreso;
+  }
+
+  private updateSection(section: CatalogoKey, list: string[]) {
+    if (section === 'conceptos') {
+      this.cfg.updateConceptos(list);
+      return;
+    }
+    if (section === 'medios') {
+      this.cfg.updateMedios(list);
+      return;
+    }
+    if (section === 'tiposSalida') {
+      this.cfg.updateTiposSalida(list);
+      return;
+    }
+    this.cfg.updateTiposIngreso(list);
   }
 }

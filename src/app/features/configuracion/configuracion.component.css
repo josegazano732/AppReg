@@ -40,6 +40,18 @@
 	border-top: 1px dashed #dbe4f0;
 }
 
+.config-panel li .form-control {
+	max-width: 360px;
+}
+
+.item-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
 @media (max-width: 991px) {
 	.config-grid {
 		grid-template-columns: 1fr;

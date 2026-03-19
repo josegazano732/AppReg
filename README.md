@@ -2,6 +2,10 @@
 
 Aplicacion Angular con arquitectura modular y enfoque local-first para operacion diaria de caja.
 
+## Manual de usuario
+
+- Guia completa por pantalla y flujo operativo: `README-USUARIO.md`
+
 ## Estado actual
 
 - Todo el proyecto usa CSS (sin SCSS).

@@ -11,10 +11,21 @@
       </div>
       <ul>
         <li *ngFor="let c of conceptos; let i = index">
-          <span>{{ c }}</span>
-          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeConcepto(i)">Eliminar</button>
+          <ng-container *ngIf="editIndex.conceptos !== i; else editConceptoTpl">
+            <span>{{ c }}</span>
+          </ng-container>
+          <ng-template #editConceptoTpl>
+            <input class="form-control form-control-sm" [(ngModel)]="editValue.conceptos" placeholder="Editar concepto">
+          </ng-template>
+          <div class="item-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.conceptos !== i" (click)="startEdit('conceptos', i, c)">Editar</button>
+            <button type="button" class="btn btn-sm btn-primary" *ngIf="editIndex.conceptos === i" (click)="saveEdit('conceptos', i)">Guardar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.conceptos === i" (click)="cancelEdit('conceptos')">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeConcepto(i)">Eliminar</button>
+          </div>
         </li>
       </ul>
+      <small class="text-danger" *ngIf="editError.conceptos">{{ editError.conceptos }}</small>
     </article>
 
     <article class="config-panel">
@@ -25,10 +36,21 @@
       </div>
       <ul>
         <li *ngFor="let m of medios; let i = index">
-          <span>{{ m }}</span>
-          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeMedio(i)">Eliminar</button>
+          <ng-container *ngIf="editIndex.medios !== i; else editMedioTpl">
+            <span>{{ m }}</span>
+          </ng-container>
+          <ng-template #editMedioTpl>
+            <input class="form-control form-control-sm" [(ngModel)]="editValue.medios" placeholder="Editar medio de pago">
+          </ng-template>
+          <div class="item-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.medios !== i" (click)="startEdit('medios', i, m)">Editar</button>
+            <button type="button" class="btn btn-sm btn-primary" *ngIf="editIndex.medios === i" (click)="saveEdit('medios', i)">Guardar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.medios === i" (click)="cancelEdit('medios')">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeMedio(i)">Eliminar</button>
+          </div>
         </li>
       </ul>
+      <small class="text-danger" *ngIf="editError.medios">{{ editError.medios }}</small>
     </article>
 
     <article class="config-panel">
@@ -39,10 +61,21 @@
       </div>
       <ul>
         <li *ngFor="let t of tiposSalida; let i = index">
-          <span>{{ t }}</span>
-          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeTipoSalida(i)">Eliminar</button>
+          <ng-container *ngIf="editIndex.tiposSalida !== i; else editSalidaTpl">
+            <span>{{ t }}</span>
+          </ng-container>
+          <ng-template #editSalidaTpl>
+            <input class="form-control form-control-sm" [(ngModel)]="editValue.tiposSalida" placeholder="Editar tipo de salida">
+          </ng-template>
+          <div class="item-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.tiposSalida !== i" (click)="startEdit('tiposSalida', i, t)">Editar</button>
+            <button type="button" class="btn btn-sm btn-primary" *ngIf="editIndex.tiposSalida === i" (click)="saveEdit('tiposSalida', i)">Guardar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.tiposSalida === i" (click)="cancelEdit('tiposSalida')">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeTipoSalida(i)">Eliminar</button>
+          </div>
         </li>
       </ul>
+      <small class="text-danger" *ngIf="editError.tiposSalida">{{ editError.tiposSalida }}</small>
     </article>
 
     <article class="config-panel">
@@ -53,10 +86,21 @@
       </div>
       <ul>
         <li *ngFor="let t of tiposIngreso; let i = index">
-          <span>{{ t }}</span>
-          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeTipoIngreso(i)">Eliminar</button>
+          <ng-container *ngIf="editIndex.tiposIngreso !== i; else editIngresoTpl">
+            <span>{{ t }}</span>
+          </ng-container>
+          <ng-template #editIngresoTpl>
+            <input class="form-control form-control-sm" [(ngModel)]="editValue.tiposIngreso" placeholder="Editar tipo de ingreso">
+          </ng-template>
+          <div class="item-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.tiposIngreso !== i" (click)="startEdit('tiposIngreso', i, t)">Editar</button>
+            <button type="button" class="btn btn-sm btn-primary" *ngIf="editIndex.tiposIngreso === i" (click)="saveEdit('tiposIngreso', i)">Guardar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" *ngIf="editIndex.tiposIngreso === i" (click)="cancelEdit('tiposIngreso')">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeTipoIngreso(i)">Eliminar</button>
+          </div>
         </li>
       </ul>
+      <small class="text-danger" *ngIf="editError.tiposIngreso">{{ editError.tiposIngreso }}</small>
     </article>
   </div>
 </section>

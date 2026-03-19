@@ -16,6 +16,8 @@
 	position: sticky;
 	top: 0;
 	height: 100vh;
+	display: flex;
+	flex-direction: column;
 }
 
 .brand {
@@ -51,6 +53,17 @@
 .menu {
 	display: grid;
 	gap: 0.45rem;
+}
+
+.sidebar-copy {
+	margin-top: auto;
+	padding-top: 0.9rem;
+	border-top: 1px solid rgba(148, 163, 184, 0.22);
+	font-size: 0.76rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #94a3b8;
+	font-weight: 700;
 }
 
 .menu a {
