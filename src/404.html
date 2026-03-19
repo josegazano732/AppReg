@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <title>Redirigiendo | AppReg</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>
+      // Save current URL and redirect to app root so Angular can boot.
+      sessionStorage.redirect = location.href;
+      var repoBase = '/' + location.pathname.split('/')[1] + '/';
+      location.replace(location.origin + repoBase);
+    </script>
+  </head>
+  <body></body>
+</html>
