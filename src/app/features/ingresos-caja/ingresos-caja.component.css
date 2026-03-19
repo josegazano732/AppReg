@@ -1,28 +1,116 @@
 .top-controls {
   display: grid;
-  grid-template-columns: minmax(220px, 320px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
 }
 
-.top-controls label,
-.ingreso-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.86rem;
-  color: #334155;
-  font-weight: 600;
-}
-
-.ingreso-form {
-  margin-top: 1rem;
+.entry-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
 }
 
-.actions {
-  align-self: end;
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.33rem;
+}
+
+.field-label {
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: #334155;
+  margin: 0;
+}
+
+.field-error {
+  font-size: 0.74rem;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.ingreso-form {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.form-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #dce5f2;
+  border-radius: 0.75rem;
+  background: #f5f9ff;
+}
+
+.form-toolbar-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.form-toolbar-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.balance-chip {
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.balance-chip.ok {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.balance-chip.warn {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.date-field {
+  grid-column: span 1;
+  max-width: 320px;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.span-3 {
+  grid-column: span 3;
+}
+
+.monto-input {
+  width: min(100%, 20ch);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.form-action {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.highlight-card {
+  background: #ecfeff;
+  border-color: #a5f3fc;
 }
 
 .table-wrap {
@@ -53,13 +141,37 @@
 }
 
 @media (max-width: 991px) {
-  .ingreso-form {
+  .top-controls,
+  .entry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .span-3 {
+    grid-column: span 2;
+  }
+
+  .ingreso-form {
+    padding: 0.85rem;
   }
 }
 
 @media (max-width: 767px) {
-  .ingreso-form {
+  .top-controls,
+  .entry-grid {
     grid-template-columns: 1fr;
+  }
+
+  .span-2,
+  .span-3 {
+    grid-column: span 1;
+  }
+
+  .form-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .date-field {
+    max-width: none;
   }
 }

@@ -25,6 +25,11 @@
   align-self: end;
 }
 
+.monto-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .disponible-box {
   border: 1px solid #dbe4f0;
   border-radius: 0.8rem;

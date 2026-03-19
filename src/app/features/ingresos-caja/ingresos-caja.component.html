@@ -3,68 +3,79 @@
   <p class="section-subtitle">Registra ingresos por tipo, concepto, monto, medio de pago, observacion y comprobante para impactar en la caja del dia seleccionado.</p>
 
   <div class="top-controls">
-    <label>
-      Fecha de caja
-      <input type="date" class="form-control" [(ngModel)]="fechaSeleccionada" (change)="onFechaChange()">
-    </label>
+    <div class="form-field date-field">
+      <label class="field-label" for="fechaCajaInput">Fecha de caja</label>
+      <input id="fechaCajaInput" type="date" class="form-control" [(ngModel)]="fechaSeleccionada" (change)="onFechaChange()">
+    </div>
   </div>
 
-  <form [formGroup]="form" class="ingreso-form" (ngSubmit)="addIngreso()">
-    <label>
-      Tipo de ingreso
-      <select class="form-select" formControlName="tipoIngreso">
+  <form [formGroup]="form" class="entry-grid ingreso-form" (ngSubmit)="addIngreso()">
+    <div class="span-3 form-toolbar">
+      <div>
+        <h4 class="form-toolbar-title">Nuevo ingreso</h4>
+      </div>
+      <span class="balance-chip" [class.ok]="form.valid" [class.warn]="form.invalid">
+        {{ form.valid ? 'Listo para guardar' : 'Completa los campos obligatorios' }}
+      </span>
+    </div>
+
+    <div class="form-field">
+      <label class="field-label" for="tipoIngresoInput">Tipo de ingreso</label>
+      <select id="tipoIngresoInput" class="form-select" formControlName="tipoIngreso">
         <option *ngFor="let tipo of tiposIngreso" [value]="tipo">{{ tipo }}</option>
       </select>
-    </label>
+    </div>
 
-    <label>
-      Concepto
-      <input type="text" class="form-control" formControlName="concepto" placeholder="Ej: Cobro de tramite o ajuste de caja">
-    </label>
+    <div class="form-field span-2">
+      <label class="field-label" for="conceptoInput">Concepto</label>
+      <input id="conceptoInput" type="text" class="form-control" formControlName="concepto" placeholder="Ej: Cobro de tramite o ajuste de caja" autocomplete="off">
+      <small class="field-error" *ngIf="form.get('concepto')?.touched && form.get('concepto')?.invalid">Completa el concepto del ingreso.</small>
+    </div>
 
-    <label>
-      Monto
-      <input type="number" class="form-control" formControlName="monto" min="0.01" step="0.01">
-    </label>
+    <div class="form-field">
+      <label class="field-label" for="montoInput">Monto</label>
+      <input
+        id="montoInput"
+        type="text"
+        class="form-control monto-input"
+        formControlName="monto"
+        placeholder="0,00"
+        inputmode="decimal"
+        autocomplete="off"
+        maxlength="22"
+        (focus)="onMontoFocus($event)"
+        (keydown)="onMontoKeydown($event)"
+        (input)="onMontoInput()"
+      >
+      <small class="field-error" *ngIf="form.get('monto')?.touched && form.get('monto')?.invalid">El monto debe ser mayor a 0.</small>
+    </div>
 
-    <label>
-      Medio de pago afectado
-      <select class="form-select" formControlName="medioPago">
+    <div class="form-field">
+      <label class="field-label" for="medioPagoInput">Medio de pago afectado</label>
+      <select id="medioPagoInput" class="form-select" formControlName="medioPago">
         <option *ngFor="let medio of medios" [value]="medio">{{ medio }}</option>
       </select>
-    </label>
+    </div>
 
-    <label>
-      Observacion
-      <input type="text" class="form-control" formControlName="observacion" placeholder="Detalle opcional del ingreso">
-    </label>
+    <div class="form-field">
+      <label class="field-label" for="comprobanteInput">Comprobante</label>
+      <input id="comprobanteInput" type="text" class="form-control" formControlName="comprobante" placeholder="Nro de comprobante / recibo" autocomplete="off">
+    </div>
 
-    <label>
-      Comprobante
-      <input type="text" class="form-control" formControlName="comprobante" placeholder="Nro de comprobante / recibo">
-    </label>
+    <div class="form-field span-3">
+      <label class="field-label" for="observacionInput">Observacion</label>
+      <input id="observacionInput" type="text" class="form-control" formControlName="observacion" placeholder="Detalle opcional del ingreso" autocomplete="off">
+    </div>
 
-    <div class="actions">
-      <button type="submit" class="btn btn-primary">Registrar ingreso</button>
+    <div class="span-3 form-action">
+      <button type="submit" class="btn btn-primary" [disabled]="form.invalid">Registrar ingreso</button>
     </div>
   </form>
 
   <div class="kpi-grid mt-4">
-    <article class="kpi-card">
-      <p class="kpi-label">Ingresos del dia</p>
-      <p class="kpi-value">{{ cajaDia.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Egresos del dia</p>
-      <p class="kpi-value">{{ cajaDia.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Caja neta del dia</p>
-      <p class="kpi-value">{{ cajaDia.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Saldo efectivo del dia</p>
-      <p class="kpi-value">{{ cajaDia.saldo.efectivo | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
+    <article class="kpi-card highlight-card">
+      <p class="kpi-label">Efectivo disponible</p>
+      <p class="kpi-value">{{ efectivoEsperadoDia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
     </article>
   </div>
 

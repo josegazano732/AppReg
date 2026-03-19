@@ -17,6 +17,7 @@ export class IngresosCajaComponent implements OnInit {
   tiposIngreso: string[] = [];
   medios: string[] = [];
   ingresosDia: IngresoCaja[] = [];
+  efectivoEsperadoDia = 0;
 
   cajaDia = {
     totalIngresos: 0,
@@ -28,7 +29,7 @@ export class IngresosCajaComponent implements OnInit {
   form = this.fb.group({
     tipoIngreso: ['VENTA', Validators.required],
     concepto: ['', Validators.required],
-    monto: [0, [Validators.required, Validators.min(0.01)]],
+    monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
     medioPago: ['EFECTIVO', Validators.required],
     observacion: [''],
     comprobante: ['']
@@ -71,6 +72,28 @@ export class IngresosCajaComponent implements OnInit {
     this.refresh();
   }
 
+  onMontoFocus(event: FocusEvent) {
+    const input = event.target as HTMLInputElement | null;
+    if (!input) return;
+    setTimeout(() => input.select(), 0);
+  }
+
+  onMontoKeydown(event: KeyboardEvent) {
+    if (event.key !== '.' && event.key !== 'Decimal') return;
+    const input = event.target as HTMLInputElement | null;
+    if (!input) return;
+
+    event.preventDefault();
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.setRangeText(',', start, end, 'end');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  onMontoInput() {
+    this.normalizeMontoControl();
+  }
+
   addIngreso() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -78,11 +101,18 @@ export class IngresosCajaComponent implements OnInit {
     }
 
     const value = this.form.getRawValue();
+    const monto = this.parseImporte(value.monto);
+    if (monto <= 0) {
+      this.form.get('monto')?.setErrors({ montoInvalido: true });
+      this.form.get('monto')?.markAsTouched();
+      return;
+    }
+
     this.caja.addIngreso({
       fecha: this.fechaSeleccionada,
       tipoIngreso: String(value.tipoIngreso || this.tiposIngreso[0] || 'VENTA').toUpperCase(),
       concepto: String(value.concepto || '').trim(),
-      monto: Number(value.monto || 0),
+      monto,
       medioPago: String(value.medioPago || 'EFECTIVO').toUpperCase(),
       observacion: String(value.observacion || '').trim(),
       comprobante: String(value.comprobante || '').trim()
@@ -91,7 +121,7 @@ export class IngresosCajaComponent implements OnInit {
     this.form.reset({
       tipoIngreso: this.tiposIngreso[0] || 'VENTA',
       concepto: '',
-      monto: 0,
+      monto: '',
       medioPago: this.medios[0] || 'EFECTIVO',
       observacion: '',
       comprobante: ''
@@ -106,6 +136,11 @@ export class IngresosCajaComponent implements OnInit {
   private refresh() {
     this.ingresosDia = this.caja.getIngresosByDate(this.fechaSeleccionada);
     const resumen = this.caja.getCajaDiaria(this.fechaSeleccionada);
+    const inicio = this.caja.getInicioDiaPorMedio(this.fechaSeleccionada);
+    const pendiente = this.caja.getCajaPendienteParaCierre(this.fechaSeleccionada);
+
+    this.efectivoEsperadoDia = Number(inicio.EFECTIVO || 0) + Number(pendiente.saldo.efectivo || 0);
+
     this.cajaDia = {
       totalIngresos: resumen.totalIngresos,
       totalGastos: resumen.totalGastos,
@@ -126,5 +161,55 @@ export class IngresosCajaComponent implements OnInit {
       return normalized;
     }
     return ['EFECTIVO', ...normalized.filter(item => item !== 'EFECTIVO')];
+  }
+
+  private normalizeMontoControl() {
+    const control = this.form.get('monto');
+    if (!control) return;
+
+    const raw = String(control.value || '');
+    const cleaned = raw.replace(/[\s\$]/g, '').replace(/\./g, '').replace(/[^\d,]/g, '');
+    const commaIndex = cleaned.indexOf(',');
+    const hasComma = commaIndex >= 0;
+
+    let enteraDigits = (hasComma ? cleaned.slice(0, commaIndex) : cleaned).replace(/,/g, '');
+    let decimalDigits = (hasComma ? cleaned.slice(commaIndex + 1) : '').replace(/,/g, '');
+
+    enteraDigits = enteraDigits.slice(0, 15);
+    decimalDigits = decimalDigits.slice(0, 2);
+
+    if (hasComma && !enteraDigits) {
+      enteraDigits = '0';
+    }
+
+    const entera = this.formatEnteraConMiles(enteraDigits);
+    const normalized = hasComma ? `${entera},${decimalDigits}` : entera;
+
+    if (normalized !== raw) {
+      control.setValue(normalized, { emitEvent: false });
+    }
+  }
+
+  private parseImporte(value: number | string | null | undefined): number {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    const raw = String(value || '').trim();
+    if (!raw) return 0;
+
+    const cleaned = raw.replace(/[\s\$]/g, '').replace(/\./g, '').replace(/[^\d,]/g, '');
+    const commaIndex = cleaned.indexOf(',');
+    const entera = (commaIndex >= 0 ? cleaned.slice(0, commaIndex) : cleaned).replace(/,/g, '');
+    const decimal = (commaIndex >= 0 ? cleaned.slice(commaIndex + 1) : '').replace(/,/g, '').slice(0, 2);
+    const normalized = decimal.length ? `${entera}.${decimal}` : entera;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private formatEnteraConMiles(value: string): string {
+    if (!value) return '';
+    return value.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   }
 }

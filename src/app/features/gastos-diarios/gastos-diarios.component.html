@@ -24,7 +24,18 @@
 
     <label>
       Monto
-      <input type="number" class="form-control" formControlName="monto" min="0.01" step="0.01">
+      <input
+        type="text"
+        class="form-control monto-input"
+        formControlName="monto"
+        placeholder="0,00"
+        inputmode="decimal"
+        autocomplete="off"
+        maxlength="22"
+        (focus)="onMontoFocus($event)"
+        (keydown)="onMontoKeydown($event)"
+        (input)="onMontoInput()"
+      >
     </label>
 
     <label>
