@@ -19,44 +19,13 @@
       </label>
 
       <button type="button" class="btn btn-outline-primary btn-sm" (click)="usarMesActual()">Mes actual</button>
+
+      <div class="quick-range">
+        <button type="button" class="btn btn-quick btn-sm" [class.active]="rangoRapidoDias === 7" (click)="usarUltimosDias(7)">Ultimos 7 dias</button>
+        <button type="button" class="btn btn-quick btn-sm" [class.active]="rangoRapidoDias === 30" (click)="usarUltimosDias(30)">Ultimos 30 dias</button>
+        <button type="button" class="btn btn-quick btn-sm" [class.active]="rangoRapidoDias === 90" (click)="usarUltimosDias(90)">Ultimos 90 dias</button>
+      </div>
     </div>
-  </div>
-
-  <div class="kpi-grid mt-3">
-    <article class="kpi-card">
-      <p class="kpi-label">Dias con movimientos</p>
-      <p class="kpi-value">{{ kpiDias }}</p>
-    </article>
-
-    <article class="kpi-card">
-      <p class="kpi-label">Dias cerrados</p>
-      <p class="kpi-value">{{ kpiCierres }}</p>
-    </article>
-
-    <article class="kpi-card">
-      <p class="kpi-label">Movimientos totales</p>
-      <p class="kpi-value">{{ kpiMovimientos }}</p>
-    </article>
-
-    <article class="kpi-card">
-      <p class="kpi-label">Ingresos del periodo</p>
-      <p class="kpi-value">{{ kpiIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-
-    <article class="kpi-card">
-      <p class="kpi-label">Egresos del periodo</p>
-      <p class="kpi-value">{{ kpiEgresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-
-    <article class="kpi-card" [class.kpi-positive]="kpiNeto >= 0" [class.kpi-negative]="kpiNeto < 0">
-      <p class="kpi-label">Neto del periodo</p>
-      <p class="kpi-value">{{ kpiNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-
-    <article class="kpi-card" [class.kpi-positive]="kpiAlertasContinuidad === 0" [class.kpi-negative]="kpiAlertasContinuidad > 0">
-      <p class="kpi-label">Alertas continuidad</p>
-      <p class="kpi-value">{{ kpiAlertasContinuidad }}</p>
-    </article>
   </div>
 
   <article class="table-block mt-4">
@@ -121,6 +90,8 @@
         <thead>
           <tr>
             <th>Medio de pago</th>
+            <th class="text-end">Base cierre previo</th>
+            <th class="text-end">Pendientes previos</th>
             <th class="text-end">Saldo inicial</th>
             <th class="text-end">Ingresos</th>
             <th class="text-end">Egresos</th>
@@ -131,6 +102,10 @@
         <tbody>
           <tr *ngFor="let item of correlatividad; trackBy: trackByMedio">
             <td><strong>{{ item.medioPago }}</strong></td>
+            <td class="text-end">{{ item.saldoBaseCierre | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+            <td class="text-end" [class.text-emerald]="item.saldoBasePendiente >= 0" [class.text-danger]="item.saldoBasePendiente < 0">
+              {{ item.saldoBasePendiente | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+            </td>
             <td class="text-end">{{ item.saldoInicial | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
             <td class="text-end text-emerald">{{ item.ingresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
             <td class="text-end text-danger">{{ item.egresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
@@ -143,7 +118,46 @@
           </tr>
 
           <tr *ngIf="!correlatividad.length">
-            <td colspan="6" class="text-center text-secondary py-4">No hay datos para el rango seleccionado.</td>
+            <td colspan="8" class="text-center text-secondary py-4">No hay datos para el rango seleccionado.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="table-block mt-4" *ngIf="cierresObservados.length">
+    <div class="table-head">
+      <h4>Auditoria de integridad del detalle consolidado</h4>
+      <span class="chip warn">{{ cierresObservados.length }} cierre(s) para revisar</span>
+    </div>
+
+    <div class="audit-box audit-warn">
+      <p class="mb-0">
+        Se detectaron cierres cuyo snapshot no coincide con las referencias actuales o tienen movimientos faltantes. La tabla consolidada ya muestra los movimientos recalculados cuando fue posible.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>ID cierre</th>
+            <th>Estado</th>
+            <th>Observacion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let dia of cierresObservados; trackBy: trackByCierre">
+            <td>{{ dia.fecha | date:'dd/MM/yyyy' }}</td>
+            <td><small>{{ dia.cierreId }}</small></td>
+            <td>
+              <span class="chip warn">{{ dia.auditoria?.estado === 'FALTAN_REFERENCIAS' ? 'FALTAN REFS' : 'REVISAR' }}</span>
+            </td>
+            <td>
+              <strong>{{ dia.auditoria?.resumen }}</strong>
+              <small class="control-note" *ngFor="let item of dia.auditoria?.detalle || []">{{ item }}</small>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -153,7 +167,7 @@
   <article class="table-block mt-4">
     <div class="table-head">
       <h4>Detalle diario consolidado</h4>
-      <span class="chip ok">Historial completo por cierre</span>
+      <span class="chip ok">Cierres y pendientes del rango</span>
     </div>
 
     <div class="table-wrap">
@@ -171,14 +185,22 @@
             <th class="text-end">Egresos</th>
             <th class="text-end">Neto</th>
             <th class="text-end">Disponible continuidad</th>
+            <th>Control</th>
             <th>Movimientos por medio</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let dia of detalleConsolidado; trackBy: trackByCierre">
+          <tr *ngFor="let dia of detalleConsolidado; trackBy: trackByCierre" [class.row-observado]="dia.auditoria && dia.auditoria.estado !== 'OK'">
             <td>{{ dia.fecha | date:'dd/MM/yyyy' }}</td>
             <td>{{ dia.cierreCreadoAt | date:'dd/MM/yyyy HH:mm' }}</td>
-            <td><small>{{ dia.cierreId }}</small></td>
+            <td>
+              <button *ngIf="dia.cierreId; else filaAbiertaId" type="button" class="btn btn-link btn-sm cierre-link" (click)="abrirDetalleCierre(dia.cierreId)">
+                {{ dia.cierreId }}
+              </button>
+              <ng-template #filaAbiertaId>
+                <small class="text-secondary">Sin cierre</small>
+              </ng-template>
+            </td>
             <td>
               <span class="chip" [class.ok]="dia.estado === 'CERRADO'" [class.warn]="dia.estado === 'ABIERTO'">
                 {{ dia.estado }}
@@ -201,6 +223,17 @@
               </ng-template>
             </td>
             <td>
+              <ng-container *ngIf="dia.auditoria; else controlAbierto">
+                <span class="chip" [class.ok]="dia.auditoria.estado === 'OK'" [class.warn]="dia.auditoria.estado !== 'OK'">
+                  {{ dia.auditoria.estado === 'OK' ? 'CONCILIADO' : dia.auditoria.estado === 'FALTAN_REFERENCIAS' ? 'FALTAN REFS' : 'REVISAR' }}
+                </span>
+                <small class="control-note">{{ dia.auditoria.resumen }}</small>
+              </ng-container>
+              <ng-template #controlAbierto>
+                <span class="chip warn">EN CURSO</span>
+              </ng-template>
+            </td>
+            <td>
               <div class="medio-badges">
                 <span
                   class="medio-chip"
@@ -215,10 +248,72 @@
           </tr>
 
           <tr *ngIf="!detalleConsolidado.length">
-            <td colspan="12" class="text-center text-secondary py-4">No hay cierres registrados en el historial.</td>
+            <td colspan="13" class="text-center text-secondary py-4">No hay cierres registrados en el rango seleccionado.</td>
           </tr>
         </tbody>
       </table>
     </div>
   </article>
+
+  <div class="detalle-modal-backdrop" *ngIf="modalDetalleAbierto" (click)="cerrarModalDetalle()"></div>
+  <section class="detalle-modal" *ngIf="modalDetalleAbierto && cierreDetalleSeleccionado" role="dialog" aria-modal="true" aria-label="Detalle de cierre">
+    <header class="detalle-modal-header">
+      <div>
+        <h4 class="mb-1">Detalle completo del cierre</h4>
+        <small>ID: {{ cierreDetalleSeleccionado.id }} | Fecha: {{ cierreDetalleSeleccionado.fecha | date:'dd/MM/yyyy' }}</small>
+      </div>
+      <div class="detalle-modal-actions">
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="imprimirDetalleCierre()">Imprimir detalle</button>
+        <button type="button" class="btn btn-outline-dark btn-sm" (click)="cerrarModalDetalle()">Cerrar</button>
+      </div>
+    </header>
+
+    <div class="detalle-modal-body">
+      <div
+        class="audit-box mb-3"
+        *ngIf="auditoriaDetalleSeleccionada"
+        [class.audit-ok]="auditoriaDetalleSeleccionada.estado === 'OK'"
+        [class.audit-warn]="auditoriaDetalleSeleccionada.estado !== 'OK'"
+      >
+        <p class="mb-1"><strong>{{ auditoriaDetalleSeleccionada.resumen }}</strong></p>
+        <p class="mb-0" *ngIf="!auditoriaDetalleSeleccionada.detalle.length">
+          El cierre se encuentra conciliado entre snapshot y referencias actuales.
+        </p>
+        <small class="control-note" *ngFor="let item of auditoriaDetalleSeleccionada.detalle">{{ item }}</small>
+      </div>
+
+      <article class="detalle-subblock">
+        <small class="text-secondary" *ngIf="faltantesDetalle.registros">Faltan {{ faltantesDetalle.registros }} registro(s) referenciado(s) que no estan disponibles en la base actual.</small>
+
+        <div class="table-wrap">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Recibo</th>
+                <th>Cliente</th>
+                <th>Conceptos</th>
+                <th>Pagos combinados</th>
+                <th class="text-end">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of registrosDetalle; trackBy: trackByRegistro">
+                <td>{{ item.createdAt | date:'short' }}</td>
+                <td>{{ item.nroRecibo }}</td>
+                <td>{{ item.nombre }}</td>
+                <td class="multiline-cell">{{ formatConceptosRegistroPlano(item) }}</td>
+                <td class="multiline-cell">{{ formatPagosRegistroPlano(item) }}</td>
+                <td class="text-end">{{ item.subtotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+              </tr>
+              <tr *ngIf="!registrosDetalle.length">
+                <td colspan="6" class="text-center text-secondary py-3">No hay registros asociados.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+    </div>
+  </section>
 </section>

@@ -20,6 +20,25 @@
   min-width: 440px;
 }
 
+.quick-range {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.btn-quick {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+}
+
+.btn-quick.active {
+  border-color: #0369a1;
+  background: #e0f2fe;
+  color: #0c4a6e;
+}
+
 .table-block {
   border: 1px solid var(--border-soft);
   border-radius: 1rem;
@@ -73,6 +92,10 @@
   color: #92400e;
 }
 
+.row-observado {
+  background: #fffaf0;
+}
+
 .medium,
 .table {
   min-width: 980px;
@@ -120,6 +143,75 @@
   border-color: #fecaca;
 }
 
+.cierre-link {
+  font-size: 0.78rem;
+  line-height: 1.15;
+  text-align: left;
+  padding: 0;
+  word-break: break-all;
+}
+
+.detalle-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.48);
+  z-index: 1040;
+}
+
+.detalle-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1100px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 0.9rem;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 28px 48px rgba(15, 23, 42, 0.3);
+  z-index: 1050;
+}
+
+.detalle-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #f8fbff, #f1f5f9);
+}
+
+.detalle-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.detalle-modal-body {
+  padding: 1rem;
+  overflow: auto;
+}
+
+.detalle-subblock h5 {
+  margin-bottom: 0.45rem;
+  font-size: 0.9rem;
+}
+
+.control-note {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.76rem;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+.multiline-cell {
+  white-space: pre-line;
+  line-height: 1.35;
+}
+
 @media (max-width: 1080px) {
   .head-wrap {
     flex-direction: column;
@@ -129,4 +221,23 @@
     min-width: 100%;
     grid-template-columns: 1fr;
   }
+
+  .quick-range {
+    justify-content: flex-start;
+  }
+
+  .detalle-modal {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+  }
+
+  .detalle-modal-header {
+    flex-direction: column;
+  }
+
+  .detalle-modal-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
 }
