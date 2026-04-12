@@ -1,8 +1,17 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CajaService } from '../../core/services/caja.service';
 import { ConfigService } from '../../core/services/config.service';
-import { CierreCaja, Registro } from '../../shared/models/finance.model';
+import { CierreCaja, Registro, TotalesMedioPago } from '../../shared/models/finance.model';
 import { environment } from '../../../environments/environment';
+
+interface DisponibilidadMedio {
+  medio: string;
+  inicio: number;
+  ingresos: number;
+  egresos: number;
+  movimientoNeto: number;
+  disponible: number;
+}
 
 @Component({
   selector: 'app-home',
@@ -22,7 +31,10 @@ export class HomeComponent implements OnInit, OnDestroy {
   now = new Date();
 
   inicioPorMedio: Array<{ medio: string; monto: number }> = [];
+  disponibilidadPorMedio: DisponibilidadMedio[] = [];
   inicioTotal = 0;
+  netoOperativoTotal = 0;
+  disponibleOperativoTotal = 0;
   cierreReferenciaId = '';
   cierreReferenciaFecha = '';
   cierreReferenciaCreadoAt = '';
@@ -77,11 +89,14 @@ export class HomeComponent implements OnInit, OnDestroy {
 
     this.cfg.medios.subscribe(() => this.refreshInicioCaja());
     this.caja.cierres.subscribe(() => this.refreshInicioCaja());
+    this.caja.ingresos.subscribe(() => this.refreshInicioCaja());
+    this.caja.gastos.subscribe(() => this.refreshInicioCaja());
 
     this.caja.registros.subscribe(items => {
       this.cantidadRegistros = items.length;
       this.totalDia = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
       this.ultimoRegistro = items.length ? items[items.length - 1] : null;
+      this.refreshInicioCaja();
     });
   }
 
@@ -191,6 +206,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     const fechaOperativa = this.caja.getTodayDateKey();
     const inicio = this.caja.getInicioOperativoPorMedio(fechaOperativa);
     const cierreReferencia: CierreCaja | null = this.caja.getCierreBaseOperativa(fechaOperativa);
+    const cajaDia = this.caja.getCajaPendienteParaCierre(fechaOperativa);
     const mediosConfig = this.cfg.getMedios();
     const mediosBase = ['EFECTIVO', 'CHEQUES', 'POSNET', 'DEPOSITO'];
     const mediosDetectados = Object.keys(inicio || {}).filter(Boolean);
@@ -206,6 +222,41 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.cierreReferenciaFecha = cierreReferencia?.fecha || '';
     this.cierreReferenciaCreadoAt = cierreReferencia?.createdAt || '';
     this.cierreReferenciaDisponible = Number(cierreReferencia?.disponibleContinuidad || 0);
+    this.disponibilidadPorMedio = this.buildDisponibilidadPorMedio(inicio, cajaDia.ingresos, cajaDia.gastos, medios);
+    this.netoOperativoTotal = this.disponibilidadPorMedio.reduce((sum, item) => sum + Number(item.movimientoNeto || 0), 0);
+    this.disponibleOperativoTotal = this.disponibilidadPorMedio.reduce((sum, item) => sum + Number(item.disponible || 0), 0);
+  }
+
+  private buildDisponibilidadPorMedio(
+    inicioPorMedio: Record<string, number>,
+    ingresos: TotalesMedioPago,
+    egresos: TotalesMedioPago,
+    medios: string[]
+  ): DisponibilidadMedio[] {
+    return medios.map(medio => {
+      const key = this.normalizeMedio(medio);
+      const inicio = Number(inicioPorMedio[key] || 0);
+      const ingresosMedio = this.getValueFromTotales(ingresos, key);
+      const egresosMedio = this.getValueFromTotales(egresos, key);
+      const movimientoNeto = ingresosMedio - egresosMedio;
+
+      return {
+        medio: key,
+        inicio,
+        ingresos: ingresosMedio,
+        egresos: egresosMedio,
+        movimientoNeto,
+        disponible: inicio + movimientoNeto
+      };
+    });
+  }
+
+  private getValueFromTotales(totales: TotalesMedioPago, medio: string): number {
+    if (medio === 'EFECTIVO') return Number(totales.efectivo || 0);
+    if (medio === 'CHEQUES') return Number(totales.cheques || 0);
+    if (medio === 'POSNET') return Number(totales.posnet || 0);
+    if (medio === 'DEPOSITO') return Number(totales.deposito || 0);
+    return Number((totales.otros || {})[medio] || 0);
   }
 
   private normalizeMedio(value?: string): string {

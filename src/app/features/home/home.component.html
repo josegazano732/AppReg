@@ -1,4 +1,4 @@
-<section class="page-card p-4">
+<section class="page-card home-page p-4">
   <div class="hero-shell">
     <article class="hero-main">
       <p class="hero-eyebrow">Panel ejecutivo</p>
@@ -8,10 +8,25 @@
         <span>Importe inicial total</span>
         <strong>{{ inicioTotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
       </div>
+
+	  <div class="hero-glance mobile-only">
+	    <article>
+	      <span>Hora</span>
+	      <strong>{{ now | date:'HH:mm' }}</strong>
+	    </article>
+	    <article>
+	      <span>Clima</span>
+	      <strong>{{ (clima.temp ?? 0) | number:'1.0-0' }}°</strong>
+	    </article>
+	    <article>
+	      <span>Dolar vta.</span>
+	      <strong>{{ (dolarBna.venta || 0) | currency:'ARS':'symbol':'1.0-0':'es-AR' }}</strong>
+	    </article>
+	  </div>
     </article>
 
     <article class="hero-side">
-      <div class="clock-card">
+      <div class="clock-card desktop-only">
         <p class="clock-label">Fecha operativa</p>
         <p class="clock-date">{{ now | date:'EEEE d MMMM y' }}</p>
         <p class="clock-hour">{{ now | date:'HH:mm:ss' }}</p>
@@ -71,8 +86,14 @@
 
   <article class="start-box mt-4">
     <div class="start-box-head">
-      <h4>Inicio de caja por medio de pago</h4>
-      <span class="chip ok">Hoy</span>
+      <div>
+        <h4>Inicio de caja por medio de pago</h4>
+        <p class="start-box-subtitle">Resumen rapido del estado operativo</p>
+      </div>
+      <div class="start-box-totals">
+        <span class="chip neutral">Neto: {{ netoOperativoTotal | currency:'ARS':'symbol':'1.0-0':'es-AR' }}</span>
+        <span class="chip ok">Disponible: {{ disponibleOperativoTotal | currency:'ARS':'symbol':'1.0-0':'es-AR' }}</span>
+      </div>
     </div>
     <p class="start-reference" *ngIf="cierreReferenciaFecha; else sinCierreReferencia">
       Saldo inicial tomado del cierre: <strong>{{ cierreReferenciaFecha | date:'dd/MM/yyyy' }}</strong>
@@ -86,12 +107,67 @@
       <p class="start-reference empty">Sin cierre previo: el inicio de caja se muestra en cero.</p>
     </ng-template>
 
-    <div class="start-grid">
-      <article class="start-item" [class.start-item-efectivo]="item.medio === 'EFECTIVO'" *ngFor="let item of inicioPorMedio">
-        <p>{{ item.medio }}</p>
-        <strong>{{ item.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
-      </article>
-    </div>
+    <section class="disponible-medios mt-3" *ngIf="disponibilidadPorMedio.length">
+      <div class="disponible-head">
+        <p class="inline-title mb-0">Disponible actual por medio de pago</p>
+        <small class="text-secondary">Inicio + ingresos - egresos del dia</small>
+      </div>
+
+      <div class="table-wrap disponible-table-wrap desktop-only">
+        <table class="table align-middle mb-0 disponible-table">
+          <thead>
+            <tr>
+              <th>Medio</th>
+              <th class="text-end">Inicio</th>
+              <th class="text-end">Ingresos</th>
+              <th class="text-end">Egresos</th>
+              <th class="text-end">Neto dia</th>
+              <th class="text-end">Disponible</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let item of disponibilidadPorMedio">
+              <td><strong>{{ item.medio }}</strong></td>
+              <td class="text-end">{{ item.inicio | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+              <td class="text-end text-success">{{ item.ingresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+              <td class="text-end text-danger">{{ item.egresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
+              <td class="text-end" [class.text-success]="item.movimientoNeto >= 0" [class.text-danger]="item.movimientoNeto < 0">
+                {{ item.movimientoNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+              </td>
+              <td class="text-end" [class.text-success]="item.disponible >= 0" [class.text-danger]="item.disponible < 0">
+                <strong>{{ item.disponible | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="disponible-compact mobile-only">
+        <div class="disponible-compact-head">
+          <span>Medio</span>
+          <span class="text-end">Disponible</span>
+          <span class="text-end">Neto</span>
+        </div>
+
+        <article class="disponible-row" *ngFor="let item of disponibilidadPorMedio">
+          <div class="disponible-row-main">
+            <strong>{{ item.medio }}</strong>
+            <span class="text-end" [class.text-success]="item.disponible >= 0" [class.text-danger]="item.disponible < 0">
+              {{ item.disponible | currency:'ARS':'symbol':'1.0-0':'es-AR' }}
+            </span>
+            <span class="text-end" [class.text-success]="item.movimientoNeto >= 0" [class.text-danger]="item.movimientoNeto < 0">
+              {{ item.movimientoNeto | currency:'ARS':'symbol':'1.0-0':'es-AR' }}
+            </span>
+          </div>
+
+          <div class="disponible-row-meta">
+            <span>Ini {{ item.inicio | currency:'ARS':'symbol':'1.0-0':'es-AR' }}</span>
+            <span class="text-success">Ing {{ item.ingresos | currency:'ARS':'symbol':'1.0-0':'es-AR' }}</span>
+            <span class="text-danger">Egr {{ item.egresos | currency:'ARS':'symbol':'1.0-0':'es-AR' }}</span>
+          </div>
+        </article>
+      </div>
+    </section>
   </article>
 
   <article class="latest-box mt-4" *ngIf="ultimoRegistro as r">
