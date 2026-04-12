@@ -18,7 +18,7 @@ export class ControlCajaComponent implements OnInit {
   inicioEfectivoDia = 0;
   ingresosEfectivoDia = 0;
   gastosEfectivoDia = 0;
-  fechaSeleccionada = new Date().toISOString().slice(0, 10);
+  fechaSeleccionada = this.caja.getTodayDateKey();
   nuevoBilleteValor: number | null = null;
 
   constructor(private caja: CajaService) {}
@@ -77,7 +77,7 @@ export class ControlCajaComponent implements OnInit {
   }
 
   private refreshArqueo() {
-    const inicioPorMedio = this.caja.getInicioDiaPorMedio(this.fechaSeleccionada);
+    const inicioPorMedio = this.caja.getInicioOperativoPorMedio(this.fechaSeleccionada);
     const cajaPendiente = this.caja.getCajaPendienteParaCierre(this.fechaSeleccionada);
 
     this.inicioEfectivoDia = Number(inicioPorMedio.EFECTIVO || 0);

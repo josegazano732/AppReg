@@ -16,7 +16,7 @@ import { Gasto } from '../../shared/models/finance.model';
 export class GastosDiariosComponent implements OnInit {
   tiposEgreso: string[] = [];
 
-  fechaSeleccionada = new Date().toISOString().slice(0, 10);
+  fechaSeleccionada = this.caja.getTodayDateKey();
   medios: string[] = [];
   gastosDia: Gasto[] = [];
 
@@ -68,6 +68,7 @@ export class GastosDiariosComponent implements OnInit {
     this.caja.gastos.subscribe(() => this.refresh());
     this.caja.registros.subscribe(() => this.refresh());
     this.caja.ingresos.subscribe(() => this.refresh());
+    this.caja.cierres.subscribe(() => this.refresh());
 
     this.form.valueChanges.subscribe(() => {
       this.syncMontoErrorByDisponibilidad();
@@ -176,18 +177,17 @@ export class GastosDiariosComponent implements OnInit {
   }
 
   private refresh() {
-    this.gastosDia = this.caja.getGastosByDate(this.fechaSeleccionada);
-    const resumen = this.caja.getCajaDiaria(this.fechaSeleccionada);
+    this.gastosDia = this.caja.getGastosPendientesByDate(this.fechaSeleccionada);
     const pendiente = this.caja.getCajaPendienteParaCierre(this.fechaSeleccionada);
 
     this.cajaDia = {
-      totalIngresos: resumen.totalIngresos,
-      totalGastos: resumen.totalGastos,
-      totalNeto: resumen.totalNeto,
-      saldo: resumen.saldo
+      totalIngresos: pendiente.totalIngresos,
+      totalGastos: pendiente.totalGastos,
+      totalNeto: pendiente.totalNeto,
+      saldo: pendiente.saldo
     };
 
-    const inicio = this.caja.getInicioDiaPorMedio(this.fechaSeleccionada);
+    const inicio = this.caja.getInicioOperativoPorMedio(this.fechaSeleccionada);
     const medios = this.collectMedios(inicio, pendiente.ingresos.otros || {}, pendiente.gastos.otros || {});
     const nextDisponibles: Record<string, number> = {};
 

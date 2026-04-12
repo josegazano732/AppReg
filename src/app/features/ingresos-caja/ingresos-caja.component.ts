@@ -13,7 +13,7 @@ import { IngresoCaja } from '../../shared/models/finance.model';
   styleUrls: ['./ingresos-caja.component.css']
 })
 export class IngresosCajaComponent implements OnInit {
-  fechaSeleccionada = new Date().toISOString().slice(0, 10);
+  fechaSeleccionada = this.caja.getTodayDateKey();
   tiposIngreso: string[] = [];
   medios: string[] = [];
   ingresosDia: IngresoCaja[] = [];
@@ -66,6 +66,7 @@ export class IngresosCajaComponent implements OnInit {
     this.caja.ingresos.subscribe(() => this.refresh());
     this.caja.registros.subscribe(() => this.refresh());
     this.caja.gastos.subscribe(() => this.refresh());
+    this.caja.cierres.subscribe(() => this.refresh());
   }
 
   onFechaChange() {
@@ -134,18 +135,17 @@ export class IngresosCajaComponent implements OnInit {
   }
 
   private refresh() {
-    this.ingresosDia = this.caja.getIngresosByDate(this.fechaSeleccionada);
-    const resumen = this.caja.getCajaDiaria(this.fechaSeleccionada);
-    const inicio = this.caja.getInicioDiaPorMedio(this.fechaSeleccionada);
+    this.ingresosDia = this.caja.getIngresosPendientesByDate(this.fechaSeleccionada);
+    const inicio = this.caja.getInicioOperativoPorMedio(this.fechaSeleccionada);
     const pendiente = this.caja.getCajaPendienteParaCierre(this.fechaSeleccionada);
 
     this.efectivoEsperadoDia = Number(inicio.EFECTIVO || 0) + Number(pendiente.saldo.efectivo || 0);
 
     this.cajaDia = {
-      totalIngresos: resumen.totalIngresos,
-      totalGastos: resumen.totalGastos,
-      totalNeto: resumen.totalNeto,
-      saldo: resumen.saldo
+      totalIngresos: pendiente.totalIngresos,
+      totalGastos: pendiente.totalGastos,
+      totalNeto: pendiente.totalNeto,
+      saldo: pendiente.saldo
     };
   }
 

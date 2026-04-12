@@ -260,6 +260,20 @@
 	background: #f8fafc;
 }
 
+.start-item-efectivo {
+	background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+	border-color: #86efac;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.start-item-efectivo p {
+	color: #166534;
+}
+
+.start-item-efectivo strong {
+	color: #14532d;
+}
+
 .start-item p {
 	margin: 0;
 	font-size: 0.7rem;

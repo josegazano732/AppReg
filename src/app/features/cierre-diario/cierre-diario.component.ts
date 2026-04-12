@@ -4,7 +4,17 @@ import { FormsModule } from '@angular/forms';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CajaService } from '../../core/services/caja.service';
+import { ConfigService } from '../../core/services/config.service';
 import { CierreCaja, Gasto, IngresoCaja, Registro, TotalesMedioPago } from '../../shared/models/finance.model';
+
+interface DetalleMedioCierreView {
+  medioPago: string;
+  saldoInicial: number;
+  ingresos: number;
+  egresos: number;
+  saldo: number;
+  disponible: number;
+}
 
 @Component({
   selector: 'app-cierre-diario',
@@ -14,7 +24,7 @@ import { CierreCaja, Gasto, IngresoCaja, Registro, TotalesMedioPago } from '../.
   styleUrls: ['./cierre-diario.component.css']
 })
 export class CierreDiarioComponent implements OnInit {
-  fechaSeleccionada = new Date().toISOString().slice(0, 10);
+  fechaSeleccionada = this.caja.getTodayDateKey();
   mesSeleccionado = this.fechaSeleccionada.slice(0, 7);
 
   registrosDia: Registro[] = [];
@@ -27,7 +37,7 @@ export class CierreDiarioComponent implements OnInit {
     totalNeto: 0,
     saldo: { efectivo: 0, cheques: 0, posnet: 0, deposito: 0 }
   };
-  detalleMedios: Array<{ medioPago: string; ingresos: number; egresos: number; saldo: number }> = [];
+  detalleMedios: DetalleMedioCierreView[] = [];
 
   cierreExistente: CierreCaja | null = null;
   cierresMensuales: CierreCaja[] = [];
@@ -38,7 +48,7 @@ export class CierreDiarioComponent implements OnInit {
   cierreMensaje = '';
   cantidadCierresDia = 0;
 
-  constructor(private caja: CajaService) {}
+  constructor(private caja: CajaService, private config: ConfigService) {}
 
   ngOnInit() {
     this.syncFechaMesActuales();
@@ -100,6 +110,7 @@ export class CierreDiarioComponent implements OnInit {
     this.registrosDia = this.caja.getRegistrosPendientesByDate(this.fechaSeleccionada);
     this.ingresosDia = this.caja.getIngresosPendientesByDate(this.fechaSeleccionada);
     this.egresosDia = this.caja.getGastosPendientesByDate(this.fechaSeleccionada);
+    const inicioPorMedio = this.caja.getInicioOperativoPorMedio(this.fechaSeleccionada);
 
     const cajaDia = this.caja.getCajaPendienteParaCierre(this.fechaSeleccionada);
     this.resumenCaja = {
@@ -108,14 +119,12 @@ export class CierreDiarioComponent implements OnInit {
       totalNeto: cajaDia.totalNeto,
       saldo: cajaDia.saldo
     };
-    const detalleCalculado = this.buildDetalleMedios(cajaDia.ingresos, cajaDia.gastos, cajaDia.saldo);
+    const detalleCalculado = this.buildDetalleMedios(inicioPorMedio, cajaDia.ingresos, cajaDia.gastos, cajaDia.saldo);
 
     this.saldoInicialDia = this.caja.getDisponibleContinuidadParaNuevoCierre(this.fechaSeleccionada);
     this.cierreExistente = this.caja.getCierreByFecha(this.fechaSeleccionada);
     this.cantidadCierresDia = this.caja.getCierresByDate(this.fechaSeleccionada).length;
-    this.detalleMedios = this.cierreExistente?.detalleMedios?.length
-      ? this.cierreExistente.detalleMedios
-      : detalleCalculado;
+    this.detalleMedios = detalleCalculado;
 
     this.disponibleContinuidad = Number(this.saldoInicialDia || 0) + Number(this.resumenCaja.saldo.efectivo || 0);
     this.observacionCierre = '';
@@ -127,7 +136,7 @@ export class CierreDiarioComponent implements OnInit {
   }
 
   private syncFechaMesActuales() {
-    this.fechaSeleccionada = new Date().toISOString().slice(0, 10);
+    this.fechaSeleccionada = this.caja.getTodayDateKey();
     this.mesSeleccionado = this.fechaSeleccionada.slice(0, 7);
   }
 
@@ -230,22 +239,26 @@ export class CierreDiarioComponent implements OnInit {
 
       autoTable(doc, {
         startY: resumenBottom + 8,
-        head: [['Medio de pago', 'Ingresos', 'Egresos', 'Saldo neto']],
+        head: [['Medio de pago', 'Saldo inicial', 'Ingresos', 'Egresos', 'Saldo neto', 'Disponible']],
         body: this.detalleMedios.map(item => [
           item.medioPago,
+          this.formatCurrency(Number(item.saldoInicial || 0)),
           this.formatCurrency(Number(item.ingresos || 0)),
           this.formatCurrency(Number(item.egresos || 0)),
-          this.formatCurrency(Number(item.saldo || 0))
+          this.formatCurrency(Number(item.saldo || 0)),
+          this.formatCurrency(Number(item.disponible || 0))
         ]),
         margin: { left: 10, right: 10 },
         styles: { fontSize: 7.8, cellPadding: 1.4, lineColor: colors.gray200 },
         headStyles: { fillColor: colors.cyan800, textColor: colors.white, fontStyle: 'bold', fontSize: 7.8 },
         alternateRowStyles: { fillColor: colors.gray50 },
         columnStyles: {
-          0: { cellWidth: 84, halign: 'left' },
-          1: { cellWidth: 42, halign: 'right' },
-          2: { cellWidth: 42, halign: 'right' },
-          3: { cellWidth: 42, halign: 'right', fontStyle: 'bold' }
+          0: { cellWidth: 50, halign: 'left' },
+          1: { cellWidth: 28, halign: 'right' },
+          2: { cellWidth: 28, halign: 'right' },
+          3: { cellWidth: 28, halign: 'right' },
+          4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
+          5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
         }
       });
 
@@ -581,51 +594,86 @@ export class CierreDiarioComponent implements OnInit {
   }
 
   private buildDetalleMedios(
+    inicioPorMedio: Record<string, number>,
     ingresos: TotalesMedioPago,
     egresos: TotalesMedioPago,
     saldo: { efectivo: number; cheques: number; posnet: number; deposito: number }
-  ) {
-    const base = [
-      {
-        medioPago: 'EFECTIVO',
-        ingresos: Number(ingresos.efectivo || 0),
-        egresos: Number(egresos.efectivo || 0),
-        saldo: Number(saldo.efectivo || 0)
-      },
-      {
-        medioPago: 'CHEQUES',
-        ingresos: Number(ingresos.cheques || 0),
-        egresos: Number(egresos.cheques || 0),
-        saldo: Number(saldo.cheques || 0)
-      },
-      {
-        medioPago: 'POSNET',
-        ingresos: Number(ingresos.posnet || 0),
-        egresos: Number(egresos.posnet || 0),
-        saldo: Number(saldo.posnet || 0)
-      },
-      {
-        medioPago: 'DEPOSITO',
-        ingresos: Number(ingresos.deposito || 0),
-        egresos: Number(egresos.deposito || 0),
-        saldo: Number(saldo.deposito || 0)
-      }
-    ];
+  ): DetalleMedioCierreView[] {
+    const medios = this.collectMediosDetalle(inicioPorMedio, ingresos, egresos);
 
-    const otros = [...new Set([...Object.keys(ingresos.otros || {}), ...Object.keys(egresos.otros || {})])]
-      .filter(Boolean)
-      .sort()
-      .map(key => {
-        const ingresosMedio = Number((ingresos.otros || {})[key] || 0);
-        const egresosMedio = Number((egresos.otros || {})[key] || 0);
+    return medios.map(medioPago => {
+      const saldoInicial = Number(inicioPorMedio[medioPago] || 0);
+      const ingresosMedio = this.getValueFromTotales(ingresos, medioPago);
+      const egresosMedio = this.getValueFromTotales(egresos, medioPago);
+      const saldoNeto = ingresosMedio - egresosMedio;
+
+      return {
+        medioPago,
+        saldoInicial,
+        ingresos: ingresosMedio,
+        egresos: egresosMedio,
+        saldo: saldoNeto,
+        disponible: saldoInicial + saldoNeto
+      };
+    });
+  }
+
+  private buildDetalleMediosDesdeSnapshot(
+    inicioPorMedio: Record<string, number>,
+    detalleSnapshot: Array<{ medioPago: string; ingresos: number; egresos: number; saldo: number }>
+  ): DetalleMedioCierreView[] {
+    const snapshotMap = new Map(
+      (detalleSnapshot || []).map(item => [this.normalizeMedio(item.medioPago), item])
+    );
+
+    return this.collectMediosDetalle(inicioPorMedio)
+      .map(medioPago => {
+        const item = snapshotMap.get(medioPago);
+        const saldoInicial = Number(inicioPorMedio[medioPago] || 0);
+        const saldoNeto = Number(item?.saldo || 0);
+
         return {
-          medioPago: key,
-          ingresos: ingresosMedio,
-          egresos: egresosMedio,
-          saldo: ingresosMedio - egresosMedio
+          medioPago,
+          saldoInicial,
+          ingresos: Number(item?.ingresos || 0),
+          egresos: Number(item?.egresos || 0),
+          saldo: saldoNeto,
+          disponible: saldoInicial + saldoNeto
         };
       });
+  }
 
-    return [...base, ...otros].filter(item => item.ingresos !== 0 || item.egresos !== 0 || item.saldo !== 0);
+  private collectMediosDetalle(
+    inicioPorMedio: Record<string, number>,
+    ingresos?: TotalesMedioPago,
+    egresos?: TotalesMedioPago
+  ): string[] {
+    const base = ['EFECTIVO', 'CHEQUES', 'POSNET', 'DEPOSITO'];
+    const configurados = this.config.getMedios().map(item => this.normalizeMedio(item)).filter(Boolean);
+    const inicio = Object.keys(inicioPorMedio || {}).map(item => this.normalizeMedio(item)).filter(Boolean);
+    const otros = [
+      ...Object.keys(ingresos?.otros || {}),
+      ...Object.keys(egresos?.otros || {})
+    ].map(item => this.normalizeMedio(item)).filter(Boolean);
+
+    const orden = [...new Set([...base, ...configurados, ...inicio, ...otros])];
+    return orden;
+  }
+
+  private getValueFromTotales(totales: TotalesMedioPago, medioPago: string): number {
+    if (medioPago === 'EFECTIVO') return Number(totales.efectivo || 0);
+    if (medioPago === 'CHEQUES') return Number(totales.cheques || 0);
+    if (medioPago === 'POSNET') return Number(totales.posnet || 0);
+    if (medioPago === 'DEPOSITO') return Number(totales.deposito || 0);
+    return Number((totales.otros || {})[medioPago] || 0);
+  }
+
+  private normalizeMedio(value?: string): string {
+    return (value || '')
+      .toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase();
   }
 }

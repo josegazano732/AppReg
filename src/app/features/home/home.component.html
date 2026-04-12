@@ -87,31 +87,12 @@
     </ng-template>
 
     <div class="start-grid">
-      <article class="start-item" *ngFor="let item of inicioPorMedio">
+      <article class="start-item" [class.start-item-efectivo]="item.medio === 'EFECTIVO'" *ngFor="let item of inicioPorMedio">
         <p>{{ item.medio }}</p>
         <strong>{{ item.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
       </article>
     </div>
   </article>
-
-  <div class="kpi-grid mt-4 business-kpis">
-    <article class="kpi-card">
-      <p class="kpi-label">Registros del dia</p>
-      <p class="kpi-value">{{ cantidadRegistros }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Total cargado hoy</p>
-      <p class="kpi-value">{{ totalDia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Conceptos configurados</p>
-      <p class="kpi-value">{{ conceptos }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Medios habilitados</p>
-      <p class="kpi-value">{{ medios }}</p>
-    </article>
-  </div>
 
   <article class="latest-box mt-4" *ngIf="ultimoRegistro as r">
     <p class="mb-1"><strong>Ultimo registro:</strong> {{ r.nroRecibo }} - {{ r.nombre }}</p>

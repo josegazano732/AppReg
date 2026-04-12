@@ -22,7 +22,8 @@ interface DisponibilidadMedio {
   styleUrls: ['./registro-diario.component.css']
 })
 export class RegistroDiarioComponent implements OnInit {
-  fechaOperativa = new Date().toISOString().slice(0, 10);
+  fechaOperativa = this.caja.getTodayDateKey();
+  expandedRegistroIds = new Set<string>();
   registroForm = this.fb.group({
     nroRecibo: ['', Validators.required],
     nombre: ['', Validators.required],
@@ -113,6 +114,7 @@ export class RegistroDiarioComponent implements OnInit {
     const subtotal = this.sumConceptos(conceptosDetalle);
 
     this.caja.addRegistro({
+      fecha: this.fechaOperativa,
       nroRecibo: value.nroRecibo || '',
       nombre: value.nombre || '',
       subtotal,
@@ -155,6 +157,7 @@ export class RegistroDiarioComponent implements OnInit {
   }
 
   removeRegistro(id: string) {
+    this.expandedRegistroIds.delete(id);
     this.caja.removeRegistro(id);
   }
 
@@ -164,6 +167,12 @@ export class RegistroDiarioComponent implements OnInit {
 
   private refreshRegistrosPendientes() {
     this.registros = this.caja.getRegistrosPendientesByDate(this.fechaOperativa);
+    const validIds = new Set(this.registros.map(item => item.id));
+    this.expandedRegistroIds.forEach(id => {
+      if (!validIds.has(id)) {
+        this.expandedRegistroIds.delete(id);
+      }
+    });
     this.recalculateTotals();
   }
 
@@ -189,6 +198,39 @@ export class RegistroDiarioComponent implements OnInit {
 
   get totalFinalRegistros(): number {
     return this.registros.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+  }
+
+  get mediosKpiVisibles(): string[] {
+    return this.mediosDisponibles.filter(medio => Number(this.getTotalForMedio(medio) || 0) !== 0);
+  }
+
+  toggleRegistroDetalle(id: string) {
+    if (this.expandedRegistroIds.has(id)) {
+      this.expandedRegistroIds.delete(id);
+      return;
+    }
+
+    this.expandedRegistroIds.add(id);
+  }
+
+  isRegistroDetalleAbierto(id: string): boolean {
+    return this.expandedRegistroIds.has(id);
+  }
+
+  getCantidadConceptos(registro: Registro): number {
+    if (registro.conceptosDetalle?.length) {
+      return registro.conceptosDetalle.length;
+    }
+
+    return registro.concepto ? 1 : 0;
+  }
+
+  getCantidadPagos(registro: Registro): number {
+    if (registro.pagosDetalle?.length) {
+      return registro.pagosDetalle.length;
+    }
+
+    return registro.medioPago ? 1 : 0;
   }
 
   addConceptoDetalle() {
@@ -347,15 +389,8 @@ export class RegistroDiarioComponent implements OnInit {
   }
 
   private refreshInicioPorMedio() {
-    this.inicioPorMedio = this.caja.getInicioDiaPorMedio(this.fechaOperativa);
-    const cierreBase = this.caja
-      .getCierresSnapshot()
-      .filter(item => item.fecha <= this.fechaOperativa)
-      .sort((a, b) => {
-        const byFecha = b.fecha.localeCompare(a.fecha);
-        if (byFecha !== 0) return byFecha;
-        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-      })[0] || null;
+    this.inicioPorMedio = this.caja.getInicioOperativoPorMedio(this.fechaOperativa);
+    const cierreBase = this.caja.getCierreBaseOperativa(this.fechaOperativa);
 
     this.cierreBaseFecha = cierreBase?.fecha || '';
     this.cierreBaseId = cierreBase?.id || '';
@@ -377,6 +412,7 @@ export class RegistroDiarioComponent implements OnInit {
       const ingresos = this.getValueFromTotales(cajaDia.ingresos, key);
       const egresos = this.getValueFromTotales(cajaDia.gastos, key);
       const movimientoNeto = ingresos - egresos;
+      const disponible = inicio + movimientoNeto;
 
       return {
         medio: key,
@@ -384,7 +420,7 @@ export class RegistroDiarioComponent implements OnInit {
         ingresos,
         egresos,
         movimientoNeto,
-        disponible: inicio + movimientoNeto
+        disponible
       };
     });
   }

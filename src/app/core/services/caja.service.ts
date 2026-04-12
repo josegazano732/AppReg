@@ -37,6 +37,10 @@ export class CajaService {
     this.hydrateFromSupabase();
   }
 
+  getTodayDateKey(): string {
+    return this.todayDateKey();
+  }
+
   getRegistrosSnapshot(): Registro[] {
     return this.registros$.getValue();
   }
@@ -66,10 +70,12 @@ export class CajaService {
 
   addRegistro(registro: Omit<Registro, 'id' | 'createdAt'>) {
     const current = this.getRegistrosSnapshot();
+    const fechaOperativa = registro.fecha || this.todayDateKey();
     const next: Registro = {
       ...registro,
       id: crypto.randomUUID(),
-      createdAt: new Date().toISOString()
+      fecha: fechaOperativa,
+      createdAt: this.buildCreatedAtForOperationalDate(fechaOperativa)
     };
     this.updateRegistros([...current, next]);
   }
@@ -80,7 +86,7 @@ export class CajaService {
   }
 
   clearRegistrosByDate(fecha: string) {
-    const next = this.getRegistrosSnapshot().filter(item => this.dateKey(item.createdAt) !== fecha);
+    const next = this.getRegistrosSnapshot().filter(item => (item.fecha || this.dateKey(item.createdAt)) !== fecha);
     this.updateRegistros(next);
   }
 
@@ -170,34 +176,19 @@ export class CajaService {
   }
 
   getInicioDiaPorMedio(fecha: string): Record<string, number> {
-    const previos = this.getCierresSnapshot()
-      .filter(item => item.fecha <= fecha)
-      .sort((a, b) => this.compareCierresDesc(a, b));
+    return this.buildInicioPorMedioFromCierre(this.getUltimoCierreAntesDe(fecha));
+  }
 
-    const ultimo = previos[0];
-    if (!ultimo) {
-      return {
-        EFECTIVO: 0,
-        CHEQUES: 0,
-        POSNET: 0,
-        DEPOSITO: 0
-      };
-    }
+  getInicioOperativoPorMedio(fecha: string): Record<string, number> {
+    return this.buildInicioPorMedioFromCierre(this.getUltimoCierreHasta(fecha));
+  }
 
-    const inicio: Record<string, number> = {
-      EFECTIVO: Number(ultimo.disponibleContinuidad || 0),
-      CHEQUES: Number(ultimo.saldo.cheques || 0),
-      POSNET: Number(ultimo.saldo.posnet || 0),
-      DEPOSITO: Number(ultimo.saldo.deposito || 0)
-    };
+  getCierreBaseDia(fecha: string): CierreCaja | null {
+    return this.getUltimoCierreAntesDe(fecha);
+  }
 
-    (ultimo.detalleMedios || []).forEach(item => {
-      const key = this.normalizeMedioKey(item.medioPago);
-      if (!key || key === 'EFECTIVO') return;
-      inicio[key] = Number(item.saldo || 0);
-    });
-
-    return inicio;
+  getCierreBaseOperativa(fecha: string): CierreCaja | null {
+    return this.getUltimoCierreHasta(fecha);
   }
 
   cerrarCajaDiaria(fecha: string, observacion?: string): CierreCaja {
@@ -242,17 +233,50 @@ export class CajaService {
 
   getRegistrosPendientesByDate(fecha: string): Registro[] {
     const closed = this.buildClosedIds().registroIds;
-    return this.getRegistrosByDate(fecha).filter(item => !closed.has(item.id));
+    const ultimoCierreDia = this.getUltimoCierreDelDia(fecha);
+    return this.getRegistrosByDate(fecha).filter(item => {
+      if (closed.has(item.id)) {
+        return false;
+      }
+
+      if (ultimoCierreDia && this.wasCreatedOnOrBeforeCut(item.createdAt, ultimoCierreDia.createdAt)) {
+        return false;
+      }
+
+      return true;
+    });
   }
 
   getIngresosPendientesByDate(fecha: string): IngresoCaja[] {
     const closed = this.buildClosedIds().ingresoIds;
-    return this.getIngresosByDate(fecha).filter(item => !item.id || !closed.has(item.id));
+    const ultimoCierreDia = this.getUltimoCierreDelDia(fecha);
+    return this.getIngresosByDate(fecha).filter(item => {
+      if (item.id && closed.has(item.id)) {
+        return false;
+      }
+
+      if (ultimoCierreDia && this.wasCreatedOnOrBeforeCut(item.createdAt, ultimoCierreDia.createdAt)) {
+        return false;
+      }
+
+      return true;
+    });
   }
 
   getGastosPendientesByDate(fecha: string): Gasto[] {
     const closed = this.buildClosedIds().egresoIds;
-    return this.getGastosByDate(fecha).filter(item => !item.id || !closed.has(item.id));
+    const ultimoCierreDia = this.getUltimoCierreDelDia(fecha);
+    return this.getGastosByDate(fecha).filter(item => {
+      if (item.id && closed.has(item.id)) {
+        return false;
+      }
+
+      if (ultimoCierreDia && this.wasCreatedOnOrBeforeCut(item.createdAt, ultimoCierreDia.createdAt)) {
+        return false;
+      }
+
+      return true;
+    });
   }
 
   getCajaPendienteParaCierre(fecha: string) {
@@ -288,14 +312,11 @@ export class CajaService {
   }
 
   getDisponibleContinuidadParaNuevoCierre(fecha: string): number {
-    const ultimo = this.getCierresSnapshot()
-      .filter(item => item.fecha <= fecha)
-      .sort((a, b) => this.compareCierresDesc(a, b))[0];
-    return Number(ultimo?.disponibleContinuidad || 0);
+    return Number(this.getInicioOperativoPorMedio(fecha).EFECTIVO || 0);
   }
 
   getRegistrosByDate(fecha: string): Registro[] {
-    return this.getRegistrosSnapshot().filter(item => this.dateKey(item.createdAt) === fecha);
+    return this.getRegistrosSnapshot().filter(item => (item.fecha || this.dateKey(item.createdAt)) === fecha);
   }
 
   getGastosByDate(fecha: string): Gasto[] {
@@ -520,6 +541,71 @@ export class CajaService {
     return `${year}-${month}-${day}`;
   }
 
+  private buildCreatedAtForOperationalDate(fecha: string): string {
+    const now = new Date();
+    const [year, month, day] = String(fecha || '').split('-').map(value => Number(value));
+
+    if (!year || !month || !day) {
+      return now.toISOString();
+    }
+
+    const operationalDate = new Date(
+      year,
+      month - 1,
+      day,
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds()
+    );
+
+    return operationalDate.toISOString();
+  }
+
+  private getUltimoCierreAntesDe(fecha: string): CierreCaja | null {
+    return this.getCierresSnapshot()
+      .filter(item => item.fecha < fecha)
+      .sort((a, b) => this.compareCierresDesc(a, b))[0] || null;
+  }
+
+  private getUltimoCierreHasta(fecha: string): CierreCaja | null {
+    return this.getCierresSnapshot()
+      .filter(item => item.fecha <= fecha)
+      .sort((a, b) => this.compareCierresDesc(a, b))[0] || null;
+  }
+
+  private getUltimoCierreDelDia(fecha: string): CierreCaja | null {
+    return this.getCierresByDate(fecha)[0] || null;
+  }
+
+  private wasCreatedOnOrBeforeCut(createdAt: string | undefined, cutCreatedAt: string | undefined): boolean {
+    if (!createdAt || !cutCreatedAt) {
+      return false;
+    }
+
+    return String(createdAt) <= String(cutCreatedAt);
+  }
+
+  private buildInicioPorMedioFromCierre(cierre: CierreCaja | null): Record<string, number> {
+    const inicio: Record<string, number> = {
+      EFECTIVO: Number(cierre?.disponibleContinuidad || 0),
+      CHEQUES: Number(cierre?.saldo.cheques || 0),
+      POSNET: Number(cierre?.saldo.posnet || 0),
+      DEPOSITO: Number(cierre?.saldo.deposito || 0)
+    };
+
+    (cierre?.detalleMedios || []).forEach(item => {
+      const key = this.normalizeMedioKey(item.medioPago);
+      if (!key || key === 'EFECTIVO') {
+        return;
+      }
+
+      inicio[key] = Number(item.saldo || 0);
+    });
+
+    return inicio;
+  }
+
   private normalizeMedioKey(value?: string): string {
     return (value || '')
       .toString()
@@ -614,8 +700,25 @@ export class CajaService {
     return (list || []).map(item => ({
       ...item,
       id: item.id || crypto.randomUUID(),
+      fecha: this.normalizeRegistroFecha(item),
       createdAt: item.createdAt || new Date().toISOString()
     }));
+  }
+
+  private normalizeRegistroFecha(item: Registro): string {
+    const createdAt = item.createdAt || new Date().toISOString();
+    const localDate = this.dateKey(createdAt);
+    const utcDate = String(createdAt).slice(0, 10);
+
+    if (!item.fecha) {
+      return localDate;
+    }
+
+    if (item.fecha === utcDate && utcDate !== localDate) {
+      return localDate;
+    }
+
+    return item.fecha;
   }
 
   private normalizeGastos(list: Gasto[]): Gasto[] {

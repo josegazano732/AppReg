@@ -11,6 +11,7 @@ export interface RegistroPagoDetalle {
 export interface Registro {
   id: string;
   createdAt: string;
+  fecha?: string;
   nroRecibo: string;
   nombre: string;
   subtotal: number;

@@ -44,8 +44,7 @@ export class SupabaseService {
       return;
     }
 
-    const query = this.client.from(table).upsert(rows as any, onConflict ? { onConflict } : undefined);
-    const { error } = await query;
+    const { error } = await this.client.from(table).upsert(rows as any, onConflict ? { onConflict } : undefined);
 
     if (error) {
       throw error;

@@ -188,16 +188,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
 
   private refreshInicioCaja() {
-    const fechaOperativa = new Date().toISOString().slice(0, 10);
-    const inicio = this.caja.getInicioDiaPorMedio(fechaOperativa);
-    const cierreReferencia: CierreCaja | null = this.caja
-      .getCierresSnapshot()
-      .filter(item => item.fecha <= fechaOperativa)
-      .sort((a, b) => {
-        const byFecha = b.fecha.localeCompare(a.fecha);
-        if (byFecha !== 0) return byFecha;
-        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-      })[0] || null;
+    const fechaOperativa = this.caja.getTodayDateKey();
+    const inicio = this.caja.getInicioOperativoPorMedio(fechaOperativa);
+    const cierreReferencia: CierreCaja | null = this.caja.getCierreBaseOperativa(fechaOperativa);
     const mediosConfig = this.cfg.getMedios();
     const mediosBase = ['EFECTIVO', 'CHEQUES', 'POSNET', 'DEPOSITO'];
     const mediosDetectados = Object.keys(inicio || {}).filter(Boolean);

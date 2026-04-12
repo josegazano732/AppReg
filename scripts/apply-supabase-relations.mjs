@@ -9,6 +9,7 @@ if (!connectionString) {
 }
 
 const statements = [
+  `alter table public.registros add column if not exists fecha date;`,
   `alter table public.registros add column if not exists concepto_id bigint;`,
   `alter table public.registros add column if not exists medio_pago_id bigint;`,
   `alter table public.gastos add column if not exists tipo_egreso_id bigint;`,
@@ -106,6 +107,111 @@ const statements = [
      end if;
    end $$;`,
 
+  `create table if not exists public.registro_conceptos_detalle (
+      registro_id text not null,
+      orden integer not null,
+      concepto text not null,
+      monto numeric not null default 0,
+      concepto_id bigint,
+      "createdAt" timestamptz not null default now(),
+      primary key (registro_id, orden),
+      constraint fk_registro_conceptos_detalle_registro
+        foreign key (registro_id) references public.registros(id) on delete cascade,
+      constraint fk_registro_conceptos_detalle_concepto
+        foreign key (concepto_id) references public.config_conceptos(id) on update cascade on delete set null
+    );`,
+
+  `create table if not exists public.registro_pagos_detalle (
+      registro_id text not null,
+      orden integer not null,
+      medio_pago text not null,
+      monto numeric not null default 0,
+      medio_pago_id bigint,
+      "createdAt" timestamptz not null default now(),
+      primary key (registro_id, orden),
+      constraint fk_registro_pagos_detalle_registro
+        foreign key (registro_id) references public.registros(id) on delete cascade,
+      constraint fk_registro_pagos_detalle_medio
+        foreign key (medio_pago_id) references public.config_medios_pago(id) on update cascade on delete set null
+    );`,
+
+  `create index if not exists idx_registro_conceptos_detalle_concepto_id
+    on public.registro_conceptos_detalle (concepto_id);`,
+
+  `create index if not exists idx_registro_pagos_detalle_medio_pago_id
+    on public.registro_pagos_detalle (medio_pago_id);`,
+
+  `create index if not exists idx_registro_pagos_detalle_medio_pago
+    on public.registro_pagos_detalle (medio_pago);`,
+
+  `insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
+   select
+     r.id,
+     detalle.ord::int,
+     upper(trim(coalesce(detalle.value->>'concepto', ''))),
+     coalesce((detalle.value->>'monto')::numeric, 0),
+     c.id
+   from public.registros r
+   join lateral jsonb_array_elements(coalesce(r."conceptosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord) on true
+   left join public.config_conceptos c
+     on c.nombre = upper(trim(coalesce(detalle.value->>'concepto', '')))
+   where upper(trim(coalesce(detalle.value->>'concepto', ''))) <> ''
+   on conflict (registro_id, orden) do update
+   set concepto = excluded.concepto,
+       monto = excluded.monto,
+       concepto_id = excluded.concepto_id;`,
+
+  `insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
+   select
+     r.id,
+     1,
+     upper(trim(coalesce(r.concepto, ''))),
+     coalesce(r."conceptoMonto", r.subtotal, 0),
+     c.id
+   from public.registros r
+   left join public.config_conceptos c
+     on c.nombre = upper(trim(coalesce(r.concepto, '')))
+   where coalesce(jsonb_array_length(coalesce(r."conceptosDetalle", '[]'::jsonb)), 0) = 0
+     and upper(trim(coalesce(r.concepto, ''))) <> ''
+   on conflict (registro_id, orden) do update
+   set concepto = excluded.concepto,
+       monto = excluded.monto,
+       concepto_id = excluded.concepto_id;`,
+
+  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+   select
+     r.id,
+     detalle.ord::int,
+     upper(trim(coalesce(detalle.value->>'medioPago', ''))),
+     coalesce((detalle.value->>'monto')::numeric, 0),
+     m.id
+   from public.registros r
+   join lateral jsonb_array_elements(coalesce(r."pagosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord) on true
+   left join public.config_medios_pago m
+     on m.nombre = upper(trim(coalesce(detalle.value->>'medioPago', '')))
+   where upper(trim(coalesce(detalle.value->>'medioPago', ''))) <> ''
+   on conflict (registro_id, orden) do update
+   set medio_pago = excluded.medio_pago,
+       monto = excluded.monto,
+       medio_pago_id = excluded.medio_pago_id;`,
+
+  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+   select
+     r.id,
+     1,
+     upper(trim(coalesce(r."medioPago", ''))),
+     coalesce(r.subtotal, 0),
+     m.id
+   from public.registros r
+   left join public.config_medios_pago m
+     on m.nombre = upper(trim(coalesce(r."medioPago", '')))
+   where coalesce(jsonb_array_length(coalesce(r."pagosDetalle", '[]'::jsonb)), 0) = 0
+     and upper(trim(coalesce(r."medioPago", ''))) <> ''
+   on conflict (registro_id, orden) do update
+   set medio_pago = excluded.medio_pago,
+       monto = excluded.monto,
+       medio_pago_id = excluded.medio_pago_id;`,
+
   `create table if not exists public.cierre_registros (
       cierre_id text not null,
       registro_id text not null,
@@ -138,6 +244,15 @@ const statements = [
       constraint fk_cierre_gastos_gasto
         foreign key (gasto_id) references public.gastos(id) on delete cascade
     );`,
+
+  `create index if not exists idx_cierre_registros_registro_id
+    on public.cierre_registros (registro_id);`,
+
+  `create index if not exists idx_cierre_ingresos_ingreso_id
+    on public.cierre_ingresos (ingreso_id);`,
+
+  `create index if not exists idx_cierre_gastos_gasto_id
+    on public.cierre_gastos (gasto_id);`,
 
   `insert into public.cierre_registros (cierre_id, registro_id)
    select c.id, r.id
@@ -189,6 +304,99 @@ const statements = [
    on public.registros
    for each row
    execute function public.fn_sync_registro_config_ids();`,
+
+  `create or replace function public.fn_sync_registro_detalles()
+   returns trigger
+   language plpgsql
+   as $$
+   begin
+     delete from public.registro_conceptos_detalle where registro_id = new.id;
+     delete from public.registro_pagos_detalle where registro_id = new.id;
+
+     insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
+     select
+       new.id,
+       detalle.ord::int,
+       upper(trim(coalesce(detalle.value->>'concepto', ''))),
+       coalesce((detalle.value->>'monto')::numeric, 0),
+       c.id
+     from jsonb_array_elements(coalesce(new."conceptosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord)
+     left join public.config_conceptos c
+       on c.nombre = upper(trim(coalesce(detalle.value->>'concepto', '')))
+     where upper(trim(coalesce(detalle.value->>'concepto', ''))) <> '';
+
+     if coalesce(jsonb_array_length(coalesce(new."conceptosDetalle", '[]'::jsonb)), 0) = 0
+        and upper(trim(coalesce(new.concepto, ''))) <> '' then
+       insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
+       select
+         new.id,
+         1,
+         upper(trim(coalesce(new.concepto, ''))),
+         coalesce(new."conceptoMonto", new.subtotal, 0),
+         c.id
+       from public.config_conceptos c
+       where c.nombre = upper(trim(coalesce(new.concepto, '')))
+       union all
+       select
+         new.id,
+         1,
+         upper(trim(coalesce(new.concepto, ''))),
+         coalesce(new."conceptoMonto", new.subtotal, 0),
+         null
+       where not exists (
+         select 1
+         from public.config_conceptos c2
+         where c2.nombre = upper(trim(coalesce(new.concepto, '')))
+       );
+     end if;
+
+     insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+     select
+       new.id,
+       detalle.ord::int,
+       upper(trim(coalesce(detalle.value->>'medioPago', ''))),
+       coalesce((detalle.value->>'monto')::numeric, 0),
+       m.id
+     from jsonb_array_elements(coalesce(new."pagosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord)
+     left join public.config_medios_pago m
+       on m.nombre = upper(trim(coalesce(detalle.value->>'medioPago', '')))
+     where upper(trim(coalesce(detalle.value->>'medioPago', ''))) <> '';
+
+     if coalesce(jsonb_array_length(coalesce(new."pagosDetalle", '[]'::jsonb)), 0) = 0
+        and upper(trim(coalesce(new."medioPago", ''))) <> '' then
+       insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+       select
+         new.id,
+         1,
+         upper(trim(coalesce(new."medioPago", ''))),
+         coalesce(new.subtotal, 0),
+         m.id
+       from public.config_medios_pago m
+       where m.nombre = upper(trim(coalesce(new."medioPago", '')))
+       union all
+       select
+         new.id,
+         1,
+         upper(trim(coalesce(new."medioPago", ''))),
+         coalesce(new.subtotal, 0),
+         null
+       where not exists (
+         select 1
+         from public.config_medios_pago m2
+         where m2.nombre = upper(trim(coalesce(new."medioPago", '')))
+       );
+     end if;
+
+     return new;
+   end;
+   $$;`,
+
+  `drop trigger if exists tr_sync_registro_detalles on public.registros;`,
+  `create trigger tr_sync_registro_detalles
+   after insert or update of concepto, "conceptoMonto", "conceptosDetalle", "medioPago", subtotal, "pagosDetalle"
+   on public.registros
+   for each row
+   execute function public.fn_sync_registro_detalles();`,
 
   `create or replace function public.fn_sync_gasto_config_ids()
    returns trigger
@@ -307,6 +515,10 @@ try {
     where conname in (
       'fk_registros_concepto',
       'fk_registros_medio_pago',
+      'fk_registro_conceptos_detalle_registro',
+      'fk_registro_conceptos_detalle_concepto',
+      'fk_registro_pagos_detalle_registro',
+      'fk_registro_pagos_detalle_medio',
       'fk_gastos_tipo_egreso',
       'fk_gastos_medio_pago',
       'fk_ingresos_tipo_ingreso',
@@ -323,13 +535,31 @@ try {
 
   const bridgeCount = await client.query(`
     select
+      (select count(*)::int from public.registro_conceptos_detalle) as registro_conceptos_detalle,
+      (select count(*)::int from public.registro_pagos_detalle) as registro_pagos_detalle,
       (select count(*)::int from public.cierre_registros) as cierre_registros,
       (select count(*)::int from public.cierre_ingresos) as cierre_ingresos,
       (select count(*)::int from public.cierre_gastos) as cierre_gastos;
   `);
 
+  const indexCheck = await client.query(`
+    select indexname
+    from pg_indexes
+    where schemaname = 'public'
+      and indexname in (
+        'idx_registro_conceptos_detalle_concepto_id',
+        'idx_registro_pagos_detalle_medio_pago_id',
+        'idx_registro_pagos_detalle_medio_pago',
+        'idx_cierre_registros_registro_id',
+        'idx_cierre_ingresos_ingreso_id',
+        'idx_cierre_gastos_gasto_id'
+      )
+    order by indexname;
+  `);
+
   console.log('FKs:', fkCheck.rows.map(r => r.conname).join(', '));
   console.log('BridgeRows:', bridgeCount.rows[0]);
+  console.log('Indexes:', indexCheck.rows.map(r => r.indexname).join(', '));
 } catch (error) {
   console.error('Relations apply failed:', error.message);
   process.exitCode = 1;

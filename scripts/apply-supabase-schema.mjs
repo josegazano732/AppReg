@@ -11,6 +11,7 @@ if (!connectionString) {
 const statements = [
   `create table if not exists public.registros (
     id text primary key,
+    fecha date,
     "createdAt" timestamptz not null,
     "nroRecibo" text,
     nombre text,
@@ -35,6 +36,7 @@ const statements = [
     "conceptosDetalle" jsonb,
     "pagosDetalle" jsonb
   );`,
+  `alter table public.registros add column if not exists fecha date;`,
   `create table if not exists public.billetes (
     valor numeric primary key,
     cantidad numeric,
@@ -100,6 +102,14 @@ const statements = [
     activo boolean not null default true,
     "createdAt" timestamptz not null default now()
   );`,
+  `create index if not exists idx_registros_fecha on public.registros (fecha);`,
+  `create index if not exists idx_registros_created_at on public.registros ("createdAt");`,
+  `create index if not exists idx_gastos_fecha on public.gastos (fecha);`,
+  `create index if not exists idx_gastos_created_at on public.gastos ("createdAt");`,
+  `create index if not exists idx_ingresos_fecha on public.ingresos (fecha);`,
+  `create index if not exists idx_ingresos_created_at on public.ingresos ("createdAt");`,
+  `create index if not exists idx_cierres_fecha on public.cierres (fecha);`,
+  `create index if not exists idx_cierres_created_at on public.cierres ("createdAt");`,
   `insert into public.config_conceptos (nombre) values
     ('SELLADOS'),
     ('MUNI'),
@@ -157,7 +167,25 @@ try {
     order by table_name;
   `);
 
+  const indexCheck = await client.query(`
+    select indexname
+    from pg_indexes
+    where schemaname = 'public'
+      and indexname in (
+        'idx_registros_fecha',
+        'idx_registros_created_at',
+        'idx_gastos_fecha',
+        'idx_gastos_created_at',
+        'idx_ingresos_fecha',
+        'idx_ingresos_created_at',
+        'idx_cierres_fecha',
+        'idx_cierres_created_at'
+      )
+    order by indexname;
+  `);
+
   console.log('Tables:', check.rows.map(r => r.table_name).join(', '));
+  console.log('Indexes:', indexCheck.rows.map(r => r.indexname).join(', '));
 } catch (error) {
   console.error('Schema apply failed:', error.message);
   process.exitCode = 1;

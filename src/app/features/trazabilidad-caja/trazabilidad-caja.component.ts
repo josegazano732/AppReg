@@ -222,6 +222,18 @@ export class TrazabilidadCajaComponent implements OnInit, OnDestroy {
     return item.id || `${item.createdAt || ''}-${item.descripcion || ''}-${item.monto || 0}`;
   }
 
+  get correlatividadVisible(): CorrelatividadMedio[] {
+    return this.correlatividad.filter(item =>
+      item.saldoBaseCierre !== 0 ||
+      item.saldoBasePendiente !== 0 ||
+      item.saldoInicial !== 0 ||
+      item.ingresos !== 0 ||
+      item.egresos !== 0 ||
+      item.neto !== 0 ||
+      item.saldoFinal !== 0
+    );
+  }
+
   getConceptosRegistro(registro: Registro): DetalleConceptoRegistro[] {
     if (registro.conceptosDetalle?.length) {
       return registro.conceptosDetalle.map(item => ({

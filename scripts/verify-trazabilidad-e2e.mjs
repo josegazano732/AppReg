@@ -23,22 +23,32 @@ const ids = {
   cierre: `test-cierre-${now}`
 };
 
+const conceptosDetalle = JSON.stringify([
+  { concepto: 'SELLADOS', monto: 60 },
+  { concepto: 'MUNI', monto: 40 }
+]);
+
+const pagosDetalle = JSON.stringify([
+  { medioPago: 'EFECTIVO', monto: 70 },
+  { medioPago: 'POSNET', monto: 30 }
+]);
+
 try {
   await client.connect();
 
   await client.query(
     `insert into public.registros (
-      id, "createdAt", "nroRecibo", nombre, subtotal,
+      id, fecha, "createdAt", "nroRecibo", nombre, subtotal,
       sellados, muni, "sugIT", patente, "antecedentesPenales",
       cheques, posnet, vep, site, deposito, efectivo,
-      "pagaCon", cambio, observacion, concepto, "conceptoMonto", "medioPago"
+      "pagaCon", cambio, observacion, concepto, "conceptoMonto", "medioPago", "conceptosDetalle", "pagosDetalle"
     ) values (
-      $1, now(), $2, $3, $4,
-      0,0,0,0,0,
-      0,0,0,0,0,100,
-      '', 0, 'TEST E2E', 'SELLADOS', 100, 'EFECTIVO'
+      $1, $2, now(), $3, $4, $5,
+      60,40,0,0,0,
+      0,30,0,0,0,70,
+      '', 0, 'TEST E2E', 'SELLADOS', 60, 'EFECTIVO', $6::jsonb, $7::jsonb
     )`,
-    [ids.registro, `REC-${now}`, 'CLIENTE TEST', 100]
+    [ids.registro, fecha, `REC-${now}`, 'CLIENTE TEST', 100, conceptosDetalle, pagosDetalle]
   );
 
   await client.query(
@@ -92,6 +102,9 @@ try {
     `select
       (select concepto_id is not null from public.registros where id = $1) as registro_concepto_fk,
       (select medio_pago_id is not null from public.registros where id = $1) as registro_medio_fk,
+      (select count(*)::int from public.registro_conceptos_detalle where registro_id = $1) as registro_conceptos_detalle,
+      (select count(*)::int from public.registro_pagos_detalle where registro_id = $1) as registro_pagos_detalle,
+      (select count(*)::int from public.registro_pagos_detalle where registro_id = $1 and medio_pago = 'POSNET') as registro_posnet_detalle,
       (select tipo_ingreso_id is not null from public.ingresos where id = $2) as ingreso_tipo_fk,
       (select medio_pago_id is not null from public.ingresos where id = $2) as ingreso_medio_fk,
       (select tipo_egreso_id is not null from public.gastos where id = $3) as gasto_tipo_fk,

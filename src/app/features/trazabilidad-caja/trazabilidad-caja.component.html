@@ -69,7 +69,7 @@
     </div>
   </article>
 
-  <article class="table-block mt-4">
+  <article class="table-block mt-4" *ngIf="correlatividadVisible.length">
     <div class="table-head">
       <div>
         <h4>Correlatividad por medio de pago</h4>
@@ -100,7 +100,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let item of correlatividad; trackBy: trackByMedio">
+          <tr *ngFor="let item of correlatividadVisible; trackBy: trackByMedio">
             <td><strong>{{ item.medioPago }}</strong></td>
             <td class="text-end">{{ item.saldoBaseCierre | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
             <td class="text-end" [class.text-emerald]="item.saldoBasePendiente >= 0" [class.text-danger]="item.saldoBasePendiente < 0">
@@ -115,10 +115,6 @@
             <td class="text-end" [class.text-emerald]="item.saldoFinal >= 0" [class.text-danger]="item.saldoFinal < 0">
               <strong>{{ item.saldoFinal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
             </td>
-          </tr>
-
-          <tr *ngIf="!correlatividad.length">
-            <td colspan="8" class="text-center text-secondary py-4">No hay datos para el rango seleccionado.</td>
           </tr>
         </tbody>
       </table>
@@ -268,52 +264,3 @@
       </div>
     </header>
 
-    <div class="detalle-modal-body">
-      <div
-        class="audit-box mb-3"
-        *ngIf="auditoriaDetalleSeleccionada"
-        [class.audit-ok]="auditoriaDetalleSeleccionada.estado === 'OK'"
-        [class.audit-warn]="auditoriaDetalleSeleccionada.estado !== 'OK'"
-      >
-        <p class="mb-1"><strong>{{ auditoriaDetalleSeleccionada.resumen }}</strong></p>
-        <p class="mb-0" *ngIf="!auditoriaDetalleSeleccionada.detalle.length">
-          El cierre se encuentra conciliado entre snapshot y referencias actuales.
-        </p>
-        <small class="control-note" *ngFor="let item of auditoriaDetalleSeleccionada.detalle">{{ item }}</small>
-      </div>
-
-      <article class="detalle-subblock">
-        <small class="text-secondary" *ngIf="faltantesDetalle.registros">Faltan {{ faltantesDetalle.registros }} registro(s) referenciado(s) que no estan disponibles en la base actual.</small>
-
-        <div class="table-wrap">
-          <table class="table align-middle mb-0">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Recibo</th>
-                <th>Cliente</th>
-                <th>Conceptos</th>
-                <th>Pagos combinados</th>
-                <th class="text-end">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let item of registrosDetalle; trackBy: trackByRegistro">
-                <td>{{ item.createdAt | date:'short' }}</td>
-                <td>{{ item.nroRecibo }}</td>
-                <td>{{ item.nombre }}</td>
-                <td class="multiline-cell">{{ formatConceptosRegistroPlano(item) }}</td>
-                <td class="multiline-cell">{{ formatPagosRegistroPlano(item) }}</td>
-                <td class="text-end">{{ item.subtotal | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</td>
-              </tr>
-              <tr *ngIf="!registrosDetalle.length">
-                <td colspan="6" class="text-center text-secondary py-3">No hay registros asociados.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-
-    </div>
-  </section>
-</section>
