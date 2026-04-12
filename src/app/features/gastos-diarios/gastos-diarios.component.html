@@ -69,25 +69,6 @@
     </div>
   </form>
 
-  <div class="kpi-grid mt-4">
-    <article class="kpi-card">
-      <p class="kpi-label">Ingresos del dia</p>
-      <p class="kpi-value">{{ cajaDia.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Egresos del dia</p>
-      <p class="kpi-value">{{ cajaDia.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Caja neta del dia</p>
-      <p class="kpi-value">{{ cajaDia.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Saldo efectivo del dia</p>
-      <p class="kpi-value">{{ cajaDia.saldo.efectivo | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-  </div>
-
   <div class="table-wrap mt-4" *ngIf="gastosDia.length; else noGastos">
     <table class="table align-middle mb-0">
       <thead>

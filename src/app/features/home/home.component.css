@@ -173,6 +173,26 @@
 	gap: 0.5rem;
 }
 
+.weather-icon-shell {
+	width: 64px;
+	height: 64px;
+	border-radius: 0.95rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(255, 255, 255, 0.8);
+	border: 1px solid #dbe4f0;
+	box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+	backdrop-filter: blur(2px);
+}
+
+.weather-icon-image {
+	display: block;
+	width: 60px;
+	height: 60px;
+	filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.22));
+}
+
 .weather-temp strong {
 	display: block;
 	font-size: 1.45rem;
@@ -685,9 +705,15 @@
 		font-size: 0.67rem;
 	}
 
-	.weather-main img {
-		width: 38px;
-		height: 38px;
+	.weather-icon-shell {
+		width: 46px;
+		height: 46px;
+		border-radius: 0.72rem;
+	}
+
+	.weather-icon-image {
+		width: 42px;
+		height: 42px;
 	}
 
 	.weather-temp strong,

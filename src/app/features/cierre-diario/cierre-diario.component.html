@@ -14,29 +14,6 @@
     </div>
   </div>
 
-  <div class="kpi-grid mt-3">
-    <article class="kpi-card">
-      <p class="kpi-label">Saldo inicial continuidad</p>
-      <p class="kpi-value">{{ saldoInicialDia | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Cortes del dia</p>
-      <p class="kpi-value">{{ cantidadCierresDia }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Ingresos del dia</p>
-      <p class="kpi-value">{{ resumenCaja.totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Egresos del dia</p>
-      <p class="kpi-value">{{ resumenCaja.totalGastos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-    <article class="kpi-card">
-      <p class="kpi-label">Neto del dia</p>
-      <p class="kpi-value">{{ resumenCaja.totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</p>
-    </article>
-  </div>
-
   <div class="movements-grid mt-4">
     <article class="panel">
       <h4>Registros del dia ({{ registrosDia.length }})</h4>

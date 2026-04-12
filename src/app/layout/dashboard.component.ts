@@ -34,9 +34,13 @@ export class DashboardComponent {
     this.sidenavOpen.update(v => !v);
   }
 
+  closeMenu() {
+    this.sidenavOpen.set(false);
+  }
+
   closeForMobile() {
     if (window.innerWidth < 992) {
-      this.sidenavOpen.set(false);
+      this.closeMenu();
     }
   }
 }

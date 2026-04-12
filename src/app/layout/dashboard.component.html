@@ -1,4 +1,12 @@
 <div class="app-shell" [class.nav-closed]="!sidenavOpen()">
+  <button
+    *ngIf="sidenavOpen()"
+    type="button"
+    class="mobile-backdrop"
+    aria-label="Cerrar menu"
+    (click)="closeMenu()"
+  ></button>
+
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-badge">AR</div>
@@ -6,6 +14,7 @@
         <h1>AppReg</h1>
         <p>Operacion diaria</p>
       </div>
+      <button type="button" class="mobile-close" (click)="closeMenu()" aria-label="Ocultar panel">Ocultar panel</button>
     </div>
 
     <nav class="menu">
@@ -61,7 +70,7 @@
 
   <section class="content-area">
     <header class="topbar">
-      <button class="menu-toggle" type="button" (click)="toggle()">Menu</button>
+      <button class="menu-toggle" type="button" (click)="toggle()" aria-label="Abrir o cerrar menu">Menu</button>
       <div class="topbar-title">
         <h2>Panel de gestion</h2>
         <p>{{ today | date:'fullDate' }}</p>

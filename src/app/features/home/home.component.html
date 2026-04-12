@@ -46,7 +46,9 @@
             <strong>{{ (clima.temp ?? 0) | number:'1.0-1' }}°C</strong>
             <span>{{ clima.descripcion || 'Sin dato' }}</span>
           </div>
-          <img *ngIf="clima.icono" [src]="'https://openweathermap.org/img/wn/' + clima.icono + '@2x.png'" alt="Icono clima" width="52" height="52">
+          <div class="weather-icon-shell" *ngIf="clima.icono">
+            <img class="weather-icon-image" [src]="'https://openweathermap.org/img/wn/' + clima.icono + '@2x.png'" alt="Icono clima" width="60" height="60">
+          </div>
         </div>
 
         <div class="weather-meta" *ngIf="!climaError">

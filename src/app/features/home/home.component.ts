@@ -22,6 +22,14 @@ export class HomeComponent implements OnInit, OnDestroy {
   private readonly DOLAR_API_BNA = 'https://dolarapi.com/v1/dolares/bna';
   private readonly DOLAR_API_OFICIAL = 'https://dolarapi.com/v1/dolares/oficial';
   private readonly OPEN_WEATHER_BASE = 'https://api.openweathermap.org/data/2.5/weather';
+  private readonly OPEN_METEO_GEOCODING = 'https://geocoding-api.open-meteo.com/v1/search';
+  private readonly OPEN_METEO_FORECAST = 'https://api.open-meteo.com/v1/forecast';
+  private readonly APOSTOLES_FALLBACK = {
+    name: 'Apostoles',
+    countryCode: 'AR',
+    latitude: -27.91421,
+    longitude: -55.75355
+  };
 
   cantidadRegistros = 0;
   totalDia = 0;
@@ -149,18 +157,32 @@ export class HomeComponent implements OnInit, OnDestroy {
     try {
       const apiKey = environment.openWeather?.apiKey || '';
       const city = environment.openWeather?.city || 'Apostoles,AR';
-      const units = environment.openWeather?.units || 'metric';
-      const lang = environment.openWeather?.lang || 'es';
+      const hasOpenWeatherKey = Boolean(apiKey && apiKey !== 'TU_API_KEY');
+      let loaded = false;
 
-      if (!apiKey || apiKey === 'TU_API_KEY') {
-        throw new Error('api_key_missing');
+      if (hasOpenWeatherKey) {
+        loaded = await this.fetchClimaFromOpenWeather(city, apiKey, environment.openWeather?.units || 'metric', environment.openWeather?.lang || 'es');
       }
 
+      if (!loaded) {
+        loaded = await this.fetchClimaFromOpenMeteo(city);
+      }
+
+      if (!loaded) {
+        throw new Error('weather_unavailable');
+      }
+    } catch {
+      this.climaError = 'No se pudo obtener el clima actual en este momento.';
+    } finally {
+      this.climaLoading = false;
+    }
+  }
+
+  private async fetchClimaFromOpenWeather(city: string, apiKey: string, units: string, lang: string): Promise<boolean> {
+    try {
       const url = `${this.OPEN_WEATHER_BASE}?q=${encodeURIComponent(city)}&appid=${encodeURIComponent(apiKey)}&units=${encodeURIComponent(units)}&lang=${encodeURIComponent(lang)}`;
       const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`weather_http_${response.status}`);
-      }
+      if (!response.ok) return false;
 
       const payload = await response.json() as {
         name?: string;
@@ -180,14 +202,149 @@ export class HomeComponent implements OnInit, OnDestroy {
         viento: Number(payload.wind?.speed ?? 0),
         actualizado: payload.dt ? new Date(payload.dt * 1000).toISOString() : new Date().toISOString()
       };
-    } catch (error) {
-      if ((error as Error)?.message === 'api_key_missing') {
-        this.climaError = 'Configura tu API key de OpenWeather en environments para ver el clima.';
-      } else {
-        this.climaError = 'No se pudo obtener el clima actual desde OpenWeather.';
-      }
-    } finally {
-      this.climaLoading = false;
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async fetchClimaFromOpenMeteo(city: string): Promise<boolean> {
+    try {
+      const cityQuery = this.normalizeCityForGeocoding(city);
+      const geoUrl = `${this.OPEN_METEO_GEOCODING}?name=${encodeURIComponent(cityQuery)}&count=1&language=es&format=json`;
+      const geoResponse = await fetch(geoUrl);
+      if (!geoResponse.ok) return false;
+
+      const geoPayload = await geoResponse.json() as {
+        results?: Array<{ latitude?: number; longitude?: number; name?: string; country_code?: string }>;
+      };
+
+      const result = geoPayload.results?.[0];
+      const latitude = result?.latitude ?? this.APOSTOLES_FALLBACK.latitude;
+      const longitude = result?.longitude ?? this.APOSTOLES_FALLBACK.longitude;
+      const cityName = result?.name || this.APOSTOLES_FALLBACK.name;
+      const countryCode = result?.country_code || this.APOSTOLES_FALLBACK.countryCode;
+
+      const forecastUrl = `${this.OPEN_METEO_FORECAST}?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,is_day&timezone=auto`;
+      const forecastResponse = await fetch(forecastUrl);
+      if (!forecastResponse.ok) return false;
+
+      const forecastPayload = await forecastResponse.json() as {
+        current?: {
+          time?: string;
+          temperature_2m?: number;
+          relative_humidity_2m?: number;
+          apparent_temperature?: number;
+          wind_speed_10m?: number;
+          weather_code?: number;
+          is_day?: number;
+        };
+      };
+
+      const current = forecastPayload.current;
+      if (!current) return false;
+
+      this.clima = {
+        ciudad: `${cityName}, ${countryCode}`,
+        descripcion: this.getOpenMeteoDescription(current.weather_code),
+        icono: this.getOpenMeteoIcon(current.weather_code, current.is_day),
+        temp: Number(current.temperature_2m ?? 0),
+        sensacion: Number(current.apparent_temperature ?? 0),
+        humedad: Number(current.relative_humidity_2m ?? 0),
+        viento: Number(current.wind_speed_10m ?? 0),
+        actualizado: current.time ? new Date(current.time).toISOString() : new Date().toISOString()
+      };
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private normalizeCityForGeocoding(city: string): string {
+    const firstToken = String(city || 'Apostoles,AR').split(',')[0]?.trim() || 'Apostoles';
+    return firstToken.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private getOpenMeteoDescription(code?: number): string {
+    switch (Number(code)) {
+      case 0:
+        return 'Cielo despejado';
+      case 1:
+      case 2:
+      case 3:
+        return 'Parcialmente nublado';
+      case 45:
+      case 48:
+        return 'Niebla';
+      case 51:
+      case 53:
+      case 55:
+        return 'Llovizna';
+      case 61:
+      case 63:
+      case 65:
+        return 'Lluvia';
+      case 71:
+      case 73:
+      case 75:
+        return 'Nieve';
+      case 80:
+      case 81:
+      case 82:
+        return 'Chaparrones';
+      case 95:
+      case 96:
+      case 99:
+        return 'Tormenta';
+      default:
+        return 'Condiciones variables';
+    }
+  }
+
+  private getOpenMeteoIcon(code?: number, isDay?: number): string {
+    const day = Number(isDay ?? 1) === 1;
+    const dayNight = (d: string, n: string) => (day ? d : n);
+
+    switch (Number(code)) {
+      case 0:
+        return dayNight('01d', '01n');
+      case 1:
+        return dayNight('02d', '02n');
+      case 2:
+      case 3:
+        return dayNight('03d', '03n');
+      case 45:
+      case 48:
+        return dayNight('50d', '50n');
+      case 51:
+      case 53:
+      case 55:
+      case 56:
+      case 57:
+      case 61:
+      case 63:
+      case 65:
+      case 66:
+      case 67:
+      case 80:
+      case 81:
+      case 82:
+        return dayNight('10d', '10n');
+      case 71:
+      case 73:
+      case 75:
+      case 77:
+      case 85:
+      case 86:
+        return dayNight('13d', '13n');
+      case 95:
+      case 96:
+      case 99:
+        return dayNight('11d', '11n');
+      default:
+        return dayNight('03d', '03n');
     }
   }
 
