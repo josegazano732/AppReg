@@ -141,271 +141,111 @@ export class CierreDiarioComponent implements OnInit {
   }
 
   private generarPdfCierre(cierre: CierreCaja, autoPrint: boolean) {
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const fechaHora = new Date().toLocaleString('es-AR');
-    const conceptoResumen = this.buildConceptoResumen(this.registrosDia);
-    const medioResumen = this.buildMedioResumen(this.registrosDia);
-    const detalleIngresos = this.ingresosDia.length
-      ? this.ingresosDia.map(item => [
-          this.normalizeText(item.tipoIngreso || 'INGRESO'),
-          this.normalizeText(item.concepto),
-          this.normalizeText(item.medioPago || 'EFECTIVO'),
-          this.formatCurrency(Number(item.monto || 0))
-        ])
-      : [['-', 'Sin ingresos manuales registrados', '-', this.formatCurrency(0)]];
-    const detalleEgresos = this.egresosDia.length
-      ? this.egresosDia.map(item => [
-          this.normalizeText(item.tipoEgreso || 'EGRESO'),
-          this.normalizeText(item.descripcion),
-          this.normalizeText(item.medioPago || 'EFECTIVO'),
-          this.formatCurrency(Number(item.monto || 0))
-        ])
-      : [['-', 'Sin egresos registrados', '-', this.formatCurrency(0)]];
-    const tieneMovimientosManual = this.ingresosDia.length > 0 || this.egresosDia.length > 0;
-    const tieneDetalleMedios = this.detalleMedios.length > 0;
-    const tieneResumenConceptos = conceptoResumen.length > 0;
-    const tieneResumenMedios = medioResumen.length > 0;
+    const movimientosDelDia = [
+      ['Registros operativos', String(this.registrosDia.length), this.formatCurrency(cierre.totalIngresos)],
+      ['Ingresos manuales', String(this.ingresosDia.length), this.formatCurrency(this.sumIngresosManuales())],
+      ['Egresos del dia', String(this.egresosDia.length), this.formatCurrency(cierre.totalGastos)]
+    ];
+    const detalleMedios = this.detalleMedios.length
+      ? this.detalleMedios
+      : this.buildDetalleMediosDesdeSnapshot(this.caja.getInicioOperativoPorMedio(this.fechaSeleccionada), cierre.detalleMedios || []);
+
     const colors = {
       slate900: [15, 23, 42] as [number, number, number],
       slate700: [51, 65, 85] as [number, number, number],
       slate500: [100, 116, 139] as [number, number, number],
       blue800: [30, 64, 175] as [number, number, number],
       cyan800: [21, 94, 117] as [number, number, number],
-      emerald700: [4, 120, 87] as [number, number, number],
-      amber700: [180, 83, 9] as [number, number, number],
       gray100: [241, 245, 249] as [number, number, number],
       gray50: [248, 250, 252] as [number, number, number],
       gray200: [226, 232, 240] as [number, number, number],
       white: [255, 255, 255] as [number, number, number]
     };
-    const pageWidth = doc.internal.pageSize.getWidth();
-
     this.drawPdfHeader(doc, cierre, fechaHora, colors);
 
     if (cierre.observacion) {
       doc.setFontSize(8);
       doc.setTextColor(...colors.slate700);
-      doc.text(`Observacion: ${this.normalizeText(cierre.observacion)}`, 14, 29);
+      doc.text(`Observacion: ${this.normalizeText(cierre.observacion)}`, 14, 30);
     }
 
-    this.drawSectionTitle(doc, 'Resumen ejecutivo del cierre', 33, colors);
+    this.drawSectionTitle(doc, 'Resumen ejecutivo del cierre', 37, colors);
 
     autoTable(doc, {
-      startY: 36,
-      head: [['Indicador', 'Valor', 'Indicador', 'Valor']],
+      startY: 40,
+      head: [['Indicador clave', 'Valor']],
       body: [
-        [
-          'Saldo inicial continuidad', this.formatCurrency(this.saldoInicialDia),
-          'Cortes registrados en el dia', String(this.cantidadCierresDia)
-        ],
-        [
-          'Ingresos operativos del dia', this.formatCurrency(cierre.totalIngresos),
-          'Ingresos manuales', String(this.ingresosDia.length)
-        ],
-        [
-          'Egresos operativos del dia', this.formatCurrency(cierre.totalGastos),
-          'Egresos registrados', String(this.egresosDia.length)
-        ],
-        [
-          'Resultado neto del dia', this.formatCurrency(cierre.totalNeto),
-          'Registros incluidos', String(this.registrosDia.length)
-        ],
-        [
-          'Disponible continuidad proyectado', this.formatCurrency(cierre.disponibleContinuidad),
-          'ID del cierre', cierre.id === 'preview' ? 'Previsualizacion' : cierre.id
-        ]
+        ['Inicio de caja (continuidad)', this.formatCurrency(this.saldoInicialDia)],
+        ['Movimiento neto del dia', this.formatCurrency(cierre.totalNeto)],
+        ['Disponible proyectado para cierre', this.formatCurrency(cierre.disponibleContinuidad)],
+        ['Cortes registrados en el dia', String(this.cantidadCierresDia)],
+        ['Estado del reporte', cierre.id === 'preview' ? 'Previsualizacion' : 'Cierre registrado']
       ],
-      margin: { left: 10, right: 10 },
-      styles: { fontSize: 8, cellPadding: 1.6, valign: 'middle', lineColor: colors.gray200 },
+      margin: { left: 12, right: 12 },
+      styles: { fontSize: 8.5, cellPadding: 1.7, valign: 'middle', lineColor: colors.gray200 },
       headStyles: { fillColor: colors.slate900, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
       alternateRowStyles: { fillColor: colors.gray50 },
       columnStyles: {
-        0: { cellWidth: 67, halign: 'left', fontStyle: 'bold' },
-        1: { cellWidth: 39, halign: 'right' },
-        2: { cellWidth: 67, halign: 'left', fontStyle: 'bold' },
-        3: { cellWidth: 67, halign: 'right' }
-      },
-      didParseCell: data => {
-        if (data.section === 'head' && (data.column.index === 1 || data.column.index === 3)) {
-          data.cell.styles.halign = 'right';
-        }
+        0: { cellWidth: 110, halign: 'left', fontStyle: 'bold' },
+        1: { cellWidth: 70, halign: 'right' }
       }
     });
 
-    let resumenBottom = (doc as any).lastAutoTable.finalY;
+    let currentY = (doc as any).lastAutoTable.finalY;
 
-    if (tieneDetalleMedios) {
-      this.drawSectionTitle(doc, 'Composicion por medio de pago', resumenBottom + 5, colors);
-
-      autoTable(doc, {
-        startY: resumenBottom + 8,
-        head: [['Medio de pago', 'Saldo inicial', 'Ingresos', 'Egresos', 'Saldo neto', 'Disponible']],
-        body: this.detalleMedios.map(item => [
-          item.medioPago,
-          this.formatCurrency(Number(item.saldoInicial || 0)),
-          this.formatCurrency(Number(item.ingresos || 0)),
-          this.formatCurrency(Number(item.egresos || 0)),
-          this.formatCurrency(Number(item.saldo || 0)),
-          this.formatCurrency(Number(item.disponible || 0))
-        ]),
-        margin: { left: 10, right: 10 },
-        styles: { fontSize: 7.8, cellPadding: 1.4, lineColor: colors.gray200 },
-        headStyles: { fillColor: colors.cyan800, textColor: colors.white, fontStyle: 'bold', fontSize: 7.8 },
-        alternateRowStyles: { fillColor: colors.gray50 },
-        columnStyles: {
-          0: { cellWidth: 50, halign: 'left' },
-          1: { cellWidth: 28, halign: 'right' },
-          2: { cellWidth: 28, halign: 'right' },
-          3: { cellWidth: 28, halign: 'right' },
-          4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
-          5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
-        }
-      });
-
-      resumenBottom = (doc as any).lastAutoTable.finalY;
-    }
-
-    if (tieneResumenConceptos || tieneResumenMedios) {
-      this.drawSectionTitle(doc, 'Distribucion de conceptos y medios cobrados', resumenBottom + 5, colors);
-
-      const distribucionStartY = resumenBottom + 8;
-      let conceptosBottom = distribucionStartY;
-      let mediosBottom = distribucionStartY;
-
-      if (tieneResumenConceptos) {
-        autoTable(doc, {
-          startY: distribucionStartY,
-          head: [['Concepto', 'Movimientos', 'Total']],
-          body: conceptoResumen.map(item => [item.concepto, String(item.cantidad), this.formatCurrency(item.total)]),
-          margin: { left: 10, right: pageWidth / 2 + 2 },
-          styles: { fontSize: 7.6, cellPadding: 1.2, valign: 'middle', lineColor: colors.gray200 },
-          headStyles: { fillColor: colors.blue800, textColor: colors.white, fontStyle: 'bold', fontSize: 7.6 },
-          alternateRowStyles: { fillColor: colors.gray50 },
-          columnStyles: {
-            0: { cellWidth: 72, halign: 'left' },
-            1: { cellWidth: 18, halign: 'center' },
-            2: { cellWidth: 30, halign: 'right' }
-          },
-          didParseCell: data => {
-            if (data.section === 'head' && (data.column.index === 1 || data.column.index === 2)) {
-              data.cell.styles.halign = data.column.index === 1 ? 'center' : 'right';
-            }
-          }
-        });
-
-        conceptosBottom = (doc as any).lastAutoTable.finalY;
-      }
-
-      if (tieneResumenMedios) {
-        autoTable(doc, {
-          startY: distribucionStartY,
-          head: [['Medio de pago', 'Movimientos', 'Total']],
-          body: medioResumen.map(item => [item.medioPago, String(item.cantidad), this.formatCurrency(item.total)]),
-          margin: { left: pageWidth / 2 + 1, right: 10 },
-          styles: { fontSize: 7.6, cellPadding: 1.2, valign: 'middle', lineColor: colors.gray200 },
-          headStyles: { fillColor: colors.cyan800, textColor: colors.white, fontStyle: 'bold', fontSize: 7.6 },
-          alternateRowStyles: { fillColor: colors.gray50 },
-          columnStyles: {
-            0: { cellWidth: 72, halign: 'left' },
-            1: { cellWidth: 18, halign: 'center' },
-            2: { cellWidth: 30, halign: 'right' }
-          },
-          didParseCell: data => {
-            if (data.section === 'head' && (data.column.index === 1 || data.column.index === 2)) {
-              data.cell.styles.halign = data.column.index === 1 ? 'center' : 'right';
-            }
-          }
-        });
-
-        mediosBottom = (doc as any).lastAutoTable.finalY;
-      }
-
-      resumenBottom = Math.max(conceptosBottom, mediosBottom);
-    }
-
-    let movimientosBottom = resumenBottom;
-
-    if (tieneMovimientosManual) {
-      this.drawSectionTitle(doc, 'Detalle de ingresos y egresos manuales', resumenBottom + 5, colors);
-
-      const movimientosManualStartY = resumenBottom + 8;
-
-      autoTable(doc, {
-        startY: movimientosManualStartY,
-        head: [['Tipo ingreso', 'Concepto', 'Medio', 'Monto']],
-        body: detalleIngresos,
-        margin: { left: 10, right: pageWidth / 2 + 2 },
-        styles: { fontSize: 7.2, cellPadding: 1.2, valign: 'top', lineColor: colors.gray200 },
-        headStyles: { fillColor: colors.emerald700, textColor: colors.white, fontStyle: 'bold', fontSize: 7.2 },
-        alternateRowStyles: { fillColor: colors.gray50 },
-        columnStyles: {
-          0: { cellWidth: 28 },
-          1: { cellWidth: 52 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 20, halign: 'right' }
-        }
-      });
-
-      const ingresosTable = (doc as any).lastAutoTable;
-
-      autoTable(doc, {
-        startY: movimientosManualStartY,
-        head: [['Tipo egreso', 'Descripcion', 'Medio', 'Monto']],
-        body: detalleEgresos,
-        margin: { left: pageWidth / 2 + 1, right: 10 },
-        styles: { fontSize: 7.2, cellPadding: 1.2, valign: 'top', lineColor: colors.gray200 },
-        headStyles: { fillColor: colors.amber700, textColor: colors.white, fontStyle: 'bold', fontSize: 7.2 },
-        alternateRowStyles: { fillColor: colors.gray50 },
-        columnStyles: {
-          0: { cellWidth: 28 },
-          1: { cellWidth: 52 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 20, halign: 'right' }
-        }
-      });
-
-      const egresosTable = (doc as any).lastAutoTable;
-      movimientosBottom = Math.max(ingresosTable.finalY, egresosTable.finalY);
-    }
-
-    this.drawSectionTitle(doc, 'Detalle de registros incluidos en el cierre', movimientosBottom + 5, colors);
+    this.drawSectionTitle(doc, 'Movimiento diario consolidado', currentY + 8, colors);
 
     autoTable(doc, {
-      startY: movimientosBottom + 8,
-      head: [['Fecha', 'Recibo', 'Cliente', 'Conceptos', 'Pagos combinados', 'Subtotal']],
-      body: this.registrosDia.length
-        ? this.registrosDia.map(item => [
-            this.formatDateTime(item.createdAt),
-            this.normalizeText(item.nroRecibo),
-            this.normalizeText(item.nombre),
-            this.describeConceptosPdf(item),
-            this.describePagosPdf(item),
-            this.formatCurrency(Number(item.subtotal || 0))
-          ])
-        : [['-', '-', 'Sin registros para esta fecha', '-', '-', this.formatCurrency(0)]],
-      margin: { left: 7, right: 7 },
-      tableWidth: 'auto',
-      styles: { fontSize: 6.8, cellPadding: 1, overflow: 'linebreak', valign: 'top', lineColor: colors.gray200 },
-      columnStyles: {
-        0: { cellWidth: 20, halign: 'left' },
-        1: { cellWidth: 18, halign: 'left' },
-        2: { cellWidth: 37, halign: 'left' },
-        3: { cellWidth: 72 },
-        4: { cellWidth: 72 },
-        5: { halign: 'right', cellWidth: 22 }
-      },
-      headStyles: { fillColor: colors.slate700, textColor: colors.white, fontSize: 7, fontStyle: 'bold' },
+      startY: currentY + 11,
+      head: [['Tipo de movimiento', 'Cantidad', 'Monto']],
+      body: movimientosDelDia,
+      margin: { left: 12, right: 12 },
+      styles: { fontSize: 8.2, cellPadding: 1.5, lineColor: colors.gray200 },
+      headStyles: { fillColor: colors.blue800, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
       alternateRowStyles: { fillColor: colors.gray50 },
-      didParseCell: data => {
-        if (data.section === 'head' && data.column.index === 5) {
-          data.cell.styles.halign = 'right';
-        }
-        if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
-          const text = Array.isArray(data.cell.text) ? data.cell.text.join('\n') : String(data.cell.text || '');
-          data.cell.text = this.compactBulletLines(text).split('\n');
-        }
+      columnStyles: {
+        0: { cellWidth: 110, halign: 'left' },
+        1: { cellWidth: 30, halign: 'center' },
+        2: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
       }
     });
+
+    currentY = (doc as any).lastAutoTable.finalY;
+
+    this.drawSectionTitle(doc, 'Como se va a cerrar por medio de pago', currentY + 8, colors);
+
+    autoTable(doc, {
+      startY: currentY + 11,
+      head: [['Medio de pago', 'Inicio de caja', 'Movimiento neto', 'Cierre proyectado']],
+      body: detalleMedios.map(item => [
+        item.medioPago,
+        this.formatCurrency(Number(item.saldoInicial || 0)),
+        this.formatCurrency(Number(item.saldo || 0)),
+        this.formatCurrency(Number(item.disponible || 0))
+      ]),
+      margin: { left: 12, right: 12 },
+      styles: { fontSize: 8.2, cellPadding: 1.5, lineColor: colors.gray200 },
+      headStyles: { fillColor: colors.cyan800, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: colors.gray50 },
+      columnStyles: {
+        0: { cellWidth: 52, halign: 'left', fontStyle: 'bold' },
+        1: { cellWidth: 42, halign: 'right' },
+        2: { cellWidth: 42, halign: 'right' },
+        3: { cellWidth: 52, halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    const cierreBottom = (doc as any).lastAutoTable.finalY;
+
+    doc.setFontSize(8);
+    doc.setTextColor(...colors.slate700);
+    doc.text(
+      `Conclusion: inicio de caja ${this.formatCurrency(this.saldoInicialDia)} + movimiento neto ${this.formatCurrency(cierre.totalNeto)} = cierre proyectado ${this.formatCurrency(cierre.disponibleContinuidad)}.`,
+      14,
+      cierreBottom + 7
+    );
 
     this.addPdfFooter(doc, cierre, colors);
 
@@ -591,6 +431,10 @@ export class CierreDiarioComponent implements OnInit {
 
   private formatCurrency(value: number): string {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 }).format(Number(value || 0));
+  }
+
+  private sumIngresosManuales(): number {
+    return this.ingresosDia.reduce((acc, item) => acc + Number(item.monto || 0), 0);
   }
 
   private buildDetalleMedios(
