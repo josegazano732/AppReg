@@ -16,7 +16,7 @@ import { Gasto } from '../../shared/models/finance.model';
 export class GastosDiariosComponent implements OnInit {
   tiposEgreso: string[] = [];
 
-  fechaSeleccionada = this.caja.getTodayDateKey();
+  fechaSeleccionada: string;
   medios: string[] = [];
   gastosDia: Gasto[] = [];
 
@@ -29,16 +29,19 @@ export class GastosDiariosComponent implements OnInit {
 
   disponiblePorMedio: Record<string, number> = {};
 
-  form = this.fb.group({
-    tipoEgreso: ['GASTOS_VARIOS', Validators.required],
-    descripcion: ['', Validators.required],
-    monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
-    medioPago: ['EFECTIVO', Validators.required],
-    observacion: [''],
-    comprobante: ['']
-  });
+  form!: ReturnType<FormBuilder['group']>;
 
-  constructor(private fb: FormBuilder, private caja: CajaService, private config: ConfigService) {}
+  constructor(private fb: FormBuilder, private caja: CajaService, private config: ConfigService) {
+    this.fechaSeleccionada = this.caja.getTodayDateKey();
+    this.form = this.fb.group({
+      tipoEgreso: ['GASTOS_VARIOS', Validators.required],
+      descripcion: ['', Validators.required],
+      monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
+      medioPago: ['EFECTIVO', Validators.required],
+      observacion: [''],
+      comprobante: ['']
+    });
+  }
 
   ngOnInit() {
     this.tiposEgreso = this.ensureTiposSalida(this.config.getTiposSalida());

@@ -1,0 +1,155 @@
+<section class="page-card p-4 movimientos-shell">
+  <div class="head-wrap">
+    <div>
+      <h3 class="section-title">Movimientos por medio de pago</h3>
+      <p class="section-subtitle mb-0">
+        Vista cronologica linea por linea desde el movimiento mas antiguo al mas nuevo. Puedes filtrar por medio sin perder el orden consecutivo.
+      </p>
+    </div>
+
+    <div class="filtro-wrap">
+      <label class="form-label mb-0">
+        Desde
+        <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaDesde" (change)="onFiltrosChange()">
+      </label>
+
+      <label class="form-label mb-0">
+        Hasta
+        <input type="date" class="form-control form-control-sm" [(ngModel)]="fechaHasta" (change)="onFiltrosChange()">
+      </label>
+
+      <label class="form-label mb-0 selector-medio">
+        Medio
+        <select class="form-select form-select-sm" [(ngModel)]="medioSeleccionado" (change)="onFiltrosChange()">
+          <option *ngFor="let medio of mediosDisponibles" [ngValue]="medio">{{ medio }}</option>
+        </select>
+      </label>
+
+      <label class="form-label mb-0">
+        Orden
+        <select class="form-select form-select-sm" [(ngModel)]="ordenSeleccionado" (change)="onFiltrosChange()">
+          <option value="ASC">Mas antiguo a mas nuevo</option>
+          <option value="DESC">Mas nuevo a mas antiguo</option>
+        </select>
+      </label>
+
+      <div class="quick-actions">
+        <button type="button" class="btn btn-outline-primary btn-sm" (click)="usarMesActual()">Mes actual</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="limpiarFiltros()">Ver todo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="kpi-grid mt-4">
+    <article class="kpi-card">
+      <span class="kpi-label">Lineas</span>
+      <strong>{{ totalLineas }}</strong>
+    </article>
+    <article class="kpi-card positive">
+      <span class="kpi-label">Ingresos</span>
+      <strong>{{ totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+    </article>
+    <article class="kpi-card negative">
+      <span class="kpi-label">Egresos</span>
+      <strong>{{ totalEgresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+    </article>
+    <article class="kpi-card" [class.positive]="totalNeto >= 0" [class.negative]="totalNeto < 0">
+      <span class="kpi-label">Neto</span>
+      <strong>{{ totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
+    </article>
+  </div>
+
+  <ng-container *ngIf="lineas.length; else emptyState">
+    <article class="table-block mt-4">
+      <div class="table-head">
+        <div>
+          <h4>Secuencia de movimientos</h4>
+          <small class="table-head-meta">
+            {{ totalLineas }} movimiento(s) ordenados cronologicamente
+            | {{ ordenSeleccionado === 'ASC' ? 'Mas antiguo a mas nuevo' : 'Mas nuevo a mas antiguo' }}
+            <ng-container *ngIf="medioSeleccionado !== 'TODOS'"> | Medio: {{ medioSeleccionado }}</ng-container>
+          </small>
+        </div>
+        <span class="chip" [class.ok]="totalNeto >= 0" [class.warn]="totalNeto < 0">
+          Neto {{ totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+        </span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Fecha operativa</th>
+              <th>Fecha y hora</th>
+              <th>Medio</th>
+              <th>Origen</th>
+              <th>Detalle</th>
+              <th>Referencia</th>
+              <th class="text-end">Ingreso</th>
+              <th class="text-end">Egreso</th>
+              <th class="text-end">Saldo acumulado</th>
+              <th class="text-end">Saldo final medio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <ng-container *ngFor="let item of lineas; trackBy: trackByLinea">
+              <tr *ngIf="isMovimiento(item); else cierreRow">
+                <td>{{ item.fecha | date:'dd/MM/yyyy' }}</td>
+                <td>{{ item.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+                <td>
+                  <span class="chip small neutral">{{ item.medioPago }}</span>
+                </td>
+                <td>
+                  <span class="chip small" [class.ok]="item.origen !== 'EGRESO'" [class.warn]="item.origen === 'EGRESO'">
+                    {{ item.origen }}
+                  </span>
+                </td>
+                <td>{{ item.detalle }}</td>
+                <td><small>{{ item.referencia }}</small></td>
+                <td class="text-end text-emerald">
+                  <ng-container *ngIf="item.monto > 0">{{ item.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</ng-container>
+                  <ng-container *ngIf="item.monto <= 0">-</ng-container>
+                </td>
+                <td class="text-end text-danger">
+                  <ng-container *ngIf="item.monto < 0">{{ (item.monto * -1) | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</ng-container>
+                  <ng-container *ngIf="item.monto >= 0">-</ng-container>
+                </td>
+                <td class="text-end" [class.text-emerald]="item.saldoAcumulado >= 0" [class.text-danger]="item.saldoAcumulado < 0">
+                  {{ item.saldoAcumulado | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+                </td>
+                <td class="text-end" [class.text-emerald]="item.saldoFinalMedio >= 0" [class.text-danger]="item.saldoFinalMedio < 0">
+                  {{ item.saldoFinalMedio | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+                </td>
+              </tr>
+
+              <ng-template #cierreRow>
+                <tr class="cierre-row">
+                  <td colspan="10" class="cierre-cell">
+                    <div class="cierre-divider">
+                      <span class="cierre-line"></span>
+                      <div class="cierre-content">
+                        <span class="chip warn">CIERRE</span>
+                        <strong>{{ item.fecha | date:'dd/MM/yyyy' }}</strong>
+                        <span>{{ item.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
+                        <small>{{ item.detalle }}</small>
+                      </div>
+                      <span class="cierre-line"></span>
+                    </div>
+                  </td>
+                </tr>
+              </ng-template>
+            </ng-container>
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </ng-container>
+
+  <ng-template #emptyState>
+    <section class="empty-state mt-4">
+      <h4>Sin movimientos para el filtro actual</h4>
+      <p class="mb-0">Ajusta el rango o el medio de pago para ver la secuencia cronologica.</p>
+    </section>
+  </ng-template>
+
+</section>

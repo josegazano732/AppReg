@@ -78,6 +78,28 @@ const statements = [
     referencias jsonb,
     "resumenMovimientos" jsonb
   );`,
+  `create table if not exists public.movimientos_bancarios (
+    id text primary key,
+    fecha date not null,
+    "createdAt" timestamptz not null,
+    "updatedAt" timestamptz not null default now(),
+    banco text,
+    cuenta text,
+    descripcion text not null,
+    monto numeric not null,
+    tipo text not null,
+    nro_operacion text,
+    referencia_externa text,
+    origen_importacion text,
+    conciliacion_estado text not null default 'PENDIENTE',
+    conciliado_registro_id text,
+    conciliado_pago_orden integer,
+    conciliado_at timestamptz
+  );`,
+  `alter table public.movimientos_bancarios add column if not exists "updatedAt" timestamptz not null default now();`,
+  `create index if not exists idx_movimientos_bancarios_fecha on public.movimientos_bancarios (fecha);`,
+  `create index if not exists idx_movimientos_bancarios_nro_operacion on public.movimientos_bancarios (nro_operacion);`,
+  `create index if not exists idx_movimientos_bancarios_estado on public.movimientos_bancarios (conciliacion_estado);`,
   `create table if not exists public.config_conceptos (
     id bigserial primary key,
     nombre text not null unique,
@@ -159,6 +181,7 @@ try {
         'gastos',
         'ingresos',
         'cierres',
+        'movimientos_bancarios',
         'config_conceptos',
         'config_medios_pago',
         'config_tipos_salida',
@@ -179,7 +202,10 @@ try {
         'idx_ingresos_fecha',
         'idx_ingresos_created_at',
         'idx_cierres_fecha',
-        'idx_cierres_created_at'
+        'idx_cierres_created_at',
+        'idx_movimientos_bancarios_fecha',
+        'idx_movimientos_bancarios_nro_operacion',
+        'idx_movimientos_bancarios_estado'
       )
     order by indexname;
   `);

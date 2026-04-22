@@ -23,7 +23,7 @@ const conceptosDetalle = [
 const pagosDetalle = [
   { medioPago: 'EFECTIVO', monto: 55 },
   { medioPago: 'POSNET', monto: 25 },
-  { medioPago: 'VEP', monto: 20 }
+  { medioPago: 'TRANSFERENCIA', monto: 20, nroOperacion: `TRX${now}` }
 ];
 
 try {
@@ -62,7 +62,8 @@ try {
       (select count(*)::int from public.registro_conceptos_detalle where registro_id = r.id) as conceptos_count,
       (select count(*)::int from public.registro_pagos_detalle where registro_id = r.id) as pagos_count,
       (select coalesce(sum(monto), 0) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'POSNET') as posnet_total,
-      (select coalesce(sum(monto), 0) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'VEP') as vep_total
+      (select coalesce(sum(monto), 0) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'TRANSFERENCIA') as transferencia_total,
+      (select max(nro_operacion) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'TRANSFERENCIA') as transferencia_operacion
     from public.registros r
     where id = $1
     limit 1`,
@@ -88,8 +89,12 @@ try {
     throw new Error(`Conceptos detalle mismatch: expected 2, got ${row.conceptos_count}`);
   }
 
-  if (Number(row.posnet_total) !== 25 || Number(row.vep_total) !== 20) {
-    throw new Error(`Detalle por medio mismatch: POSNET=${row.posnet_total}, VEP=${row.vep_total}`);
+  if (Number(row.posnet_total) !== 25 || Number(row.transferencia_total) !== 20) {
+    throw new Error(`Detalle por medio mismatch: POSNET=${row.posnet_total}, TRANSFERENCIA=${row.transferencia_total}`);
+  }
+
+  if (String(row.transferencia_operacion || '') !== `TRX${now}`) {
+    throw new Error(`Operacion transferencia mismatch: expected TRX${now}, got ${row.transferencia_operacion}`);
   }
 
   if (pagos.length !== 3) {
@@ -103,7 +108,8 @@ try {
     pagosCount: row.pagos_count,
     conceptosCount: row.conceptos_count,
     posnetTotal: row.posnet_total,
-    vepTotal: row.vep_total
+    transferenciaTotal: row.transferencia_total,
+    transferenciaOperacion: row.transferencia_operacion
   });
 
   await client.query('delete from public.registros where id = $1', [id]);

@@ -126,6 +126,7 @@ const statements = [
       orden integer not null,
       medio_pago text not null,
       monto numeric not null default 0,
+      nro_operacion text,
       medio_pago_id bigint,
       "createdAt" timestamptz not null default now(),
       primary key (registro_id, orden),
@@ -135,6 +136,8 @@ const statements = [
         foreign key (medio_pago_id) references public.config_medios_pago(id) on update cascade on delete set null
     );`,
 
+  `alter table public.registro_pagos_detalle add column if not exists nro_operacion text;`,
+
   `create index if not exists idx_registro_conceptos_detalle_concepto_id
     on public.registro_conceptos_detalle (concepto_id);`,
 
@@ -143,6 +146,9 @@ const statements = [
 
   `create index if not exists idx_registro_pagos_detalle_medio_pago
     on public.registro_pagos_detalle (medio_pago);`,
+
+  `create index if not exists idx_registro_pagos_detalle_nro_operacion
+    on public.registro_pagos_detalle (nro_operacion);`,
 
   `insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
    select
@@ -178,12 +184,13 @@ const statements = [
        monto = excluded.monto,
        concepto_id = excluded.concepto_id;`,
 
-  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
    select
      r.id,
      detalle.ord::int,
      upper(trim(coalesce(detalle.value->>'medioPago', ''))),
      coalesce((detalle.value->>'monto')::numeric, 0),
+     nullif(upper(regexp_replace(trim(coalesce(detalle.value->>'nroOperacion', '')), '\\s+', '', 'g')), ''),
      m.id
    from public.registros r
    join lateral jsonb_array_elements(coalesce(r."pagosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord) on true
@@ -193,14 +200,16 @@ const statements = [
    on conflict (registro_id, orden) do update
    set medio_pago = excluded.medio_pago,
        monto = excluded.monto,
+       nro_operacion = excluded.nro_operacion,
        medio_pago_id = excluded.medio_pago_id;`,
 
-  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
    select
      r.id,
      1,
      upper(trim(coalesce(r."medioPago", ''))),
      coalesce(r.subtotal, 0),
+     null,
      m.id
    from public.registros r
    left join public.config_medios_pago m
@@ -210,6 +219,7 @@ const statements = [
    on conflict (registro_id, orden) do update
    set medio_pago = excluded.medio_pago,
        monto = excluded.monto,
+       nro_operacion = excluded.nro_operacion,
        medio_pago_id = excluded.medio_pago_id;`,
 
   `create table if not exists public.cierre_registros (
@@ -350,12 +360,13 @@ const statements = [
        );
      end if;
 
-     insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+     insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
      select
        new.id,
        detalle.ord::int,
        upper(trim(coalesce(detalle.value->>'medioPago', ''))),
        coalesce((detalle.value->>'monto')::numeric, 0),
+       nullif(upper(regexp_replace(trim(coalesce(detalle.value->>'nroOperacion', '')), '\\s+', '', 'g')), ''),
        m.id
      from jsonb_array_elements(coalesce(new."pagosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord)
      left join public.config_medios_pago m
@@ -364,12 +375,13 @@ const statements = [
 
      if coalesce(jsonb_array_length(coalesce(new."pagosDetalle", '[]'::jsonb)), 0) = 0
         and upper(trim(coalesce(new."medioPago", ''))) <> '' then
-       insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+       insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
        select
          new.id,
          1,
          upper(trim(coalesce(new."medioPago", ''))),
          coalesce(new.subtotal, 0),
+         null,
          m.id
        from public.config_medios_pago m
        where m.nombre = upper(trim(coalesce(new."medioPago", '')))
@@ -379,6 +391,7 @@ const statements = [
          1,
          upper(trim(coalesce(new."medioPago", ''))),
          coalesce(new.subtotal, 0),
+         null,
          null
        where not exists (
          select 1

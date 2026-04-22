@@ -138,25 +138,44 @@
         <button type="button" class="btn btn-sm btn-outline-primary" (click)="addPagoDetalle()">+ Agregar medio</button>
       </div>
 
-      <div class="detail-grid" *ngFor="let group of pagosDetalle.controls; let i = index" [formGroupName]="i">
-        <span class="detail-index">#{{ i + 1 }}</span>
-        <select class="form-select" formControlName="medioPago">
-          <option *ngFor="let m of mediosDisponibles" [value]="m">{{ m }}</option>
-        </select>
-        <input
-          type="text"
-          class="form-control importe-input"
-          formControlName="monto"
-          placeholder="Agregar importe"
-          inputmode="decimal"
-          autocomplete="off"
-          aria-label="Importe"
-          maxlength="22"
-          (focus)="onImporteFocus($event)"
-          (keydown)="onImporteKeydown($event)"
-          (input)="onPagoImporteInput(i)"
-        >
-        <button type="button" class="btn btn-sm btn-outline-danger" (click)="removePagoDetalle(i)">Quitar</button>
+      <div class="payment-item" *ngFor="let group of pagosDetalle.controls; let i = index" [formGroupName]="i">
+        <div class="detail-grid payment-grid">
+          <span class="detail-index">#{{ i + 1 }}</span>
+          <select class="form-select" formControlName="medioPago" (change)="onPagoMedioChange(i)">
+            <option *ngFor="let m of mediosDisponibles" [value]="m">{{ m }}</option>
+          </select>
+          <input
+            type="text"
+            class="form-control importe-input"
+            formControlName="monto"
+            placeholder="Agregar importe"
+            inputmode="decimal"
+            autocomplete="off"
+            aria-label="Importe"
+            maxlength="22"
+            (focus)="onImporteFocus($event)"
+            (keydown)="onImporteKeydown($event)"
+            (input)="onPagoImporteInput(i)"
+          >
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="removePagoDetalle(i)">Quitar</button>
+        </div>
+
+        <div class="payment-extra-row" *ngIf="isTransferenciaPago(i)">
+          <div class="payment-operation-field">
+            <label class="field-label mb-0">Nro de operacion / transaccion</label>
+            <input
+              type="text"
+              class="form-control"
+              formControlName="nroOperacion"
+              placeholder="Ej: 000123ABC456"
+              autocomplete="off"
+              maxlength="40"
+              (input)="onPagoOperacionInput(i)"
+            >
+            <small class="field-hint">Validacion automatica: obligatorio para transferencias, formato controlado y sin duplicados previos.</small>
+            <small class="field-error" *ngIf="getPagoOperacionError(i)">{{ getPagoOperacionError(i) }}</small>
+          </div>
+        </div>
       </div>
     </div>
 

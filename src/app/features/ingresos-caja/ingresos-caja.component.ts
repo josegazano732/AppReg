@@ -13,7 +13,7 @@ import { IngresoCaja } from '../../shared/models/finance.model';
   styleUrls: ['./ingresos-caja.component.css']
 })
 export class IngresosCajaComponent implements OnInit {
-  fechaSeleccionada = this.caja.getTodayDateKey();
+  fechaSeleccionada: string;
   tiposIngreso: string[] = [];
   medios: string[] = [];
   ingresosDia: IngresoCaja[] = [];
@@ -26,16 +26,19 @@ export class IngresosCajaComponent implements OnInit {
     saldo: { efectivo: 0, cheques: 0, posnet: 0, deposito: 0 }
   };
 
-  form = this.fb.group({
-    tipoIngreso: ['VENTA', Validators.required],
-    concepto: ['', Validators.required],
-    monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
-    medioPago: ['EFECTIVO', Validators.required],
-    observacion: [''],
-    comprobante: ['']
-  });
+  form!: ReturnType<FormBuilder['group']>;
 
-  constructor(private fb: FormBuilder, private caja: CajaService, private config: ConfigService) {}
+  constructor(private fb: FormBuilder, private caja: CajaService, private config: ConfigService) {
+    this.fechaSeleccionada = this.caja.getTodayDateKey();
+    this.form = this.fb.group({
+      tipoIngreso: ['VENTA', Validators.required],
+      concepto: ['', Validators.required],
+      monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
+      medioPago: ['EFECTIVO', Validators.required],
+      observacion: [''],
+      comprobante: ['']
+    });
+  }
 
   ngOnInit() {
     this.tiposIngreso = this.ensureTiposIngreso(this.config.getTiposIngreso());

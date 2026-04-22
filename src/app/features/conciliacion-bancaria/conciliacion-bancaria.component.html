@@ -1,0 +1,196 @@
+<section class="page-card p-4 conciliacion-shell">
+  <div class="head-wrap">
+    <div>
+      <h3 class="section-title">Conciliacion bancaria</h3>
+      <p class="section-subtitle mb-0">
+        Importa movimientos del banco y cruza automaticamente contra pagos por transferencia usando nro de operacion, monto y fecha.
+      </p>
+    </div>
+
+    <div class="head-actions">
+      <button type="button" class="btn btn-outline-primary btn-sm" (click)="reConciliar()">Recalcular conciliacion</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid mt-4">
+    <article class="kpi-card">
+      <span class="kpi-label">Movimientos</span>
+      <strong>{{ kpiTotal }}</strong>
+    </article>
+    <article class="kpi-card warn-card">
+      <span class="kpi-label">Pendientes</span>
+      <strong>{{ kpiPendientes }}</strong>
+    </article>
+    <article class="kpi-card ok-card">
+      <span class="kpi-label">Conciliados</span>
+      <strong>{{ kpiConciliados }}</strong>
+    </article>
+    <article class="kpi-card review-card">
+      <span class="kpi-label">Revisar</span>
+      <strong>{{ kpiRevisar }}</strong>
+    </article>
+  </div>
+
+  <article class="import-block mt-4">
+    <div class="table-head">
+      <div>
+        <h4>Importacion rapida</h4>
+        <small class="table-head-meta">Cabecera sugerida: fecha;descripcion;monto;nroOperacion;banco;cuenta;referenciaExterna;tipo</small>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" (click)="importarTexto()">Importar texto</button>
+    </div>
+
+    <div class="import-body">
+      <textarea
+        class="form-control import-textarea"
+        [(ngModel)]="importText"
+        placeholder="Pega aqui el CSV o extracto delimitado por ; , tab o |"
+      ></textarea>
+      <small class="text-success" *ngIf="importMessage">{{ importMessage }}</small>
+      <small class="text-danger" *ngIf="importError">{{ importError }}</small>
+    </div>
+  </article>
+
+  <article class="table-block mt-4">
+    <div class="table-head">
+      <div>
+        <h4>Resultado de conciliacion</h4>
+        <small class="table-head-meta">El match automatico exige coincidencia exacta por operacion, monto e intervalo de fecha de hasta 3 dias.</small>
+      </div>
+      <span class="chip" [class.ok]="kpiPendientes === 0 && kpiRevisar === 0" [class.warn]="kpiPendientes > 0 || kpiRevisar > 0">
+        {{ kpiPendientes + kpiRevisar }} caso(s) abiertos
+      </span>
+    </div>
+
+    <div class="filters-bar">
+      <label class="form-label mb-0">
+        Estado
+        <select class="form-select form-select-sm" [(ngModel)]="filtroEstado" (change)="onFiltrosChange()">
+          <option value="TODOS">Todos</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="CONCILIADO">Conciliado</option>
+          <option value="REVISAR">Revisar</option>
+        </select>
+      </label>
+
+      <label class="form-label mb-0 search-field">
+        Buscar operacion
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          [(ngModel)]="busquedaOperacion"
+          (input)="onFiltrosChange()"
+          placeholder="Nro operacion o descripcion"
+          autocomplete="off"
+        >
+      </label>
+
+      <div class="filters-actions">
+        <button type="button" class="btn btn-outline-secondary btn-sm" (click)="limpiarFiltros()">Limpiar filtros</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Fecha banco</th>
+            <th>Descripcion</th>
+            <th>Nro operacion</th>
+            <th class="text-end">Monto</th>
+            <th>Estado</th>
+            <th>Origen match</th>
+            <th>Registro conciliado</th>
+            <th>Motivo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngFor="let item of resultadosFiltrados; trackBy: trackByResultado">
+            <tr>
+              <td>{{ item.movimiento.fecha | date:'dd/MM/yyyy' }}</td>
+              <td>
+                <strong>{{ item.movimiento.descripcion }}</strong>
+                <small class="control-note" *ngIf="item.movimiento.banco || item.movimiento.cuenta">
+                  {{ item.movimiento.banco || 'SIN BANCO' }}<span *ngIf="item.movimiento.cuenta"> | {{ item.movimiento.cuenta }}</span>
+                </small>
+              </td>
+              <td><small>{{ item.movimiento.nroOperacion || '-' }}</small></td>
+              <td class="text-end" [class.text-emerald]="item.movimiento.tipo === 'CREDITO'" [class.text-danger]="item.movimiento.tipo === 'DEBITO'">
+                {{ item.movimiento.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+              </td>
+              <td>
+                <span class="chip" [class.ok]="item.movimiento.conciliacionEstado === 'CONCILIADO'" [class.warn]="item.movimiento.conciliacionEstado !== 'CONCILIADO'">
+                  {{ item.movimiento.conciliacionEstado || 'PENDIENTE' }}
+                </span>
+              </td>
+              <td>
+                <span *ngIf="item.origenConciliacion" class="chip" [class.ok]="item.origenConciliacion === 'AUTOMATICA'" [class.warn]="item.origenConciliacion === 'MANUAL'">
+                  {{ item.origenConciliacion }}
+                </span>
+                <span *ngIf="!item.origenConciliacion" class="text-secondary">-</span>
+              </td>
+              <td>
+                <ng-container *ngIf="item.candidato; else sinMatch">
+                  <strong>{{ item.candidato.nroRecibo || item.candidato.registroId }}</strong>
+                  <small class="control-note">{{ item.candidato.nombre }} | {{ item.candidato.fecha | date:'dd/MM/yyyy' }} | Pago {{ item.candidato.ordenPago }}</small>
+                </ng-container>
+                <ng-template #sinMatch>
+                  <span class="text-secondary">Sin match aplicado</span>
+                </ng-template>
+              </td>
+              <td><small>{{ item.motivo }}</small></td>
+              <td class="text-end">
+                <div class="row-actions">
+                  <button
+                    *ngIf="(opcionesManuales[item.movimiento.id] || []).length"
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    (click)="toggleManualPanel(item.movimiento.id)">
+                    {{ panelManualAbierto[item.movimiento.id] ? 'Ocultar' : 'Asistir match' }}
+                  </button>
+                  <button
+                    *ngIf="item.movimiento.conciliacionEstado === 'CONCILIADO'"
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    (click)="liberarConciliacion(item.movimiento.id)">
+                    Liberar
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" (click)="eliminarMovimiento(item.movimiento.id)">Eliminar</button>
+                </div>
+              </td>
+            </tr>
+
+            <tr class="manual-row" *ngIf="panelManualAbierto[item.movimiento.id]">
+              <td colspan="8" class="manual-cell">
+                <div class="manual-panel">
+                  <div>
+                    <strong>Conciliacion manual asistida</strong>
+                    <small class="control-note">Se muestran candidatos por coincidencia de operacion, monto y cercania de fecha.</small>
+                  </div>
+
+                  <div class="manual-controls" *ngIf="(opcionesManuales[item.movimiento.id] || []).length; else noOptions">
+                    <select class="form-select form-select-sm" [(ngModel)]="seleccionManual[item.movimiento.id]">
+                      <option *ngFor="let option of opcionesManuales[item.movimiento.id]" [ngValue]="buildManualValue(option)">
+                        {{ option.nroRecibo || option.registroId }} | {{ option.nombre }} | {{ option.fecha | date:'dd/MM/yyyy' }} | ${{ option.monto }} | {{ option.motivoManual }}
+                      </option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-primary" (click)="aplicarConciliacionManual(item.movimiento.id)">Aplicar</button>
+                  </div>
+
+                  <ng-template #noOptions>
+                    <span class="text-secondary">No hay candidatos sugeridos para este movimiento.</span>
+                  </ng-template>
+                </div>
+              </td>
+            </tr>
+          </ng-container>
+
+          <tr *ngIf="!resultadosFiltrados.length">
+            <td colspan="9" class="text-center text-secondary py-4">No hay movimientos para el filtro actual.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>

@@ -8,6 +8,7 @@ create table if not exists public.registros (
 	id text primary key,
 	fecha date,
 	"createdAt" timestamptz not null,
+	"updatedAt" timestamptz not null default now(),
 	"nroRecibo" text,
 	nombre text,
 	subtotal numeric,
@@ -33,14 +34,18 @@ create table if not exists public.registros (
 );
 
 alter table public.registros add column if not exists fecha date;
+alter table public.registros add column if not exists "updatedAt" timestamptz not null default now();
 alter table public.registros add column if not exists concepto_id bigint;
 alter table public.registros add column if not exists medio_pago_id bigint;
 
 create table if not exists public.billetes (
 	valor numeric primary key,
 	cantidad numeric,
-	subtotal numeric
+	subtotal numeric,
+	"updatedAt" timestamptz not null default now()
 );
+
+alter table public.billetes add column if not exists "updatedAt" timestamptz not null default now();
 
 create table if not exists public.gastos (
 	id text primary key,
@@ -51,9 +56,11 @@ create table if not exists public.gastos (
 	monto numeric,
 	observacion text,
 	comprobante text,
-	"createdAt" timestamptz not null
+	"createdAt" timestamptz not null,
+	"updatedAt" timestamptz not null default now()
 );
 
+alter table public.gastos add column if not exists "updatedAt" timestamptz not null default now();
 alter table public.gastos add column if not exists tipo_egreso_id bigint;
 alter table public.gastos add column if not exists medio_pago_id bigint;
 
@@ -66,9 +73,11 @@ create table if not exists public.ingresos (
 	monto numeric,
 	observacion text,
 	comprobante text,
-	"createdAt" timestamptz not null
+	"createdAt" timestamptz not null,
+	"updatedAt" timestamptz not null default now()
 );
 
+alter table public.ingresos add column if not exists "updatedAt" timestamptz not null default now();
 alter table public.ingresos add column if not exists tipo_ingreso_id bigint;
 alter table public.ingresos add column if not exists medio_pago_id bigint;
 
@@ -76,6 +85,7 @@ create table if not exists public.cierres (
 	id text primary key,
 	fecha date not null,
 	"createdAt" timestamptz not null,
+	"updatedAt" timestamptz not null default now(),
 	"totalIngresos" numeric,
 	"totalGastos" numeric,
 	"totalNeto" numeric,
@@ -87,33 +97,142 @@ create table if not exists public.cierres (
 	"resumenMovimientos" jsonb
 );
 
+alter table public.cierres add column if not exists "updatedAt" timestamptz not null default now();
+
+create table if not exists public.movimientos_bancarios (
+	id text primary key,
+	fecha date not null,
+	"createdAt" timestamptz not null,
+	"updatedAt" timestamptz not null default now(),
+	banco text,
+	cuenta text,
+	descripcion text not null,
+	monto numeric not null,
+	tipo text not null,
+	nro_operacion text,
+	referencia_externa text,
+	origen_importacion text,
+	conciliacion_estado text not null default 'PENDIENTE',
+	conciliado_registro_id text,
+	conciliado_pago_orden integer,
+	conciliado_at timestamptz,
+	constraint chk_movimientos_bancarios_tipo check (tipo in ('CREDITO', 'DEBITO')),
+	constraint chk_movimientos_bancarios_estado check (conciliacion_estado in ('PENDIENTE', 'CONCILIADO', 'REVISAR')),
+	constraint fk_movimientos_bancarios_registro
+		foreign key (conciliado_registro_id) references public.registros(id) on update cascade on delete set null
+);
+
+alter table public.movimientos_bancarios add column if not exists "updatedAt" timestamptz not null default now();
+
 create table if not exists public.config_conceptos (
 	id bigserial primary key,
 	nombre text not null unique,
 	activo boolean not null default true,
-	"createdAt" timestamptz not null default now()
+	"createdAt" timestamptz not null default now(),
+	"updatedAt" timestamptz not null default now()
 );
 
 create table if not exists public.config_medios_pago (
 	id bigserial primary key,
 	nombre text not null unique,
 	activo boolean not null default true,
-	"createdAt" timestamptz not null default now()
+	"createdAt" timestamptz not null default now(),
+	"updatedAt" timestamptz not null default now()
 );
 
 create table if not exists public.config_tipos_salida (
 	id bigserial primary key,
 	nombre text not null unique,
 	activo boolean not null default true,
-	"createdAt" timestamptz not null default now()
+	"createdAt" timestamptz not null default now(),
+	"updatedAt" timestamptz not null default now()
 );
 
 create table if not exists public.config_tipos_ingreso (
 	id bigserial primary key,
 	nombre text not null unique,
 	activo boolean not null default true,
-	"createdAt" timestamptz not null default now()
+	"createdAt" timestamptz not null default now(),
+	"updatedAt" timestamptz not null default now()
 );
+
+alter table public.config_conceptos add column if not exists "updatedAt" timestamptz not null default now();
+alter table public.config_medios_pago add column if not exists "updatedAt" timestamptz not null default now();
+alter table public.config_tipos_salida add column if not exists "updatedAt" timestamptz not null default now();
+alter table public.config_tipos_ingreso add column if not exists "updatedAt" timestamptz not null default now();
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+	new."updatedAt" = now();
+	return new;
+end;
+$$;
+
+do $$
+begin
+	if not exists (select 1 from pg_trigger where tgname = 'trg_registros_updated_at') then
+		create trigger trg_registros_updated_at
+		before update on public.registros
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_billetes_updated_at') then
+		create trigger trg_billetes_updated_at
+		before update on public.billetes
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_gastos_updated_at') then
+		create trigger trg_gastos_updated_at
+		before update on public.gastos
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_ingresos_updated_at') then
+		create trigger trg_ingresos_updated_at
+		before update on public.ingresos
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_cierres_updated_at') then
+		create trigger trg_cierres_updated_at
+		before update on public.cierres
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_movimientos_bancarios_updated_at') then
+		create trigger trg_movimientos_bancarios_updated_at
+		before update on public.movimientos_bancarios
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_config_conceptos_updated_at') then
+		create trigger trg_config_conceptos_updated_at
+		before update on public.config_conceptos
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_config_medios_pago_updated_at') then
+		create trigger trg_config_medios_pago_updated_at
+		before update on public.config_medios_pago
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_config_tipos_salida_updated_at') then
+		create trigger trg_config_tipos_salida_updated_at
+		before update on public.config_tipos_salida
+		for each row execute function public.set_updated_at();
+	end if;
+
+	if not exists (select 1 from pg_trigger where tgname = 'trg_config_tipos_ingreso_updated_at') then
+		create trigger trg_config_tipos_ingreso_updated_at
+		before update on public.config_tipos_ingreso
+		for each row execute function public.set_updated_at();
+	end if;
+end $$;
 
 insert into public.config_conceptos (nombre) values
 	('SELLADOS'),
@@ -238,6 +357,7 @@ create table if not exists public.registro_pagos_detalle (
 	orden integer not null,
 	medio_pago text not null,
 	monto numeric not null default 0,
+	nro_operacion text,
 	medio_pago_id bigint,
 	"createdAt" timestamptz not null default now(),
 	primary key (registro_id, orden),
@@ -246,6 +366,8 @@ create table if not exists public.registro_pagos_detalle (
 	constraint fk_registro_pagos_detalle_medio
 		foreign key (medio_pago_id) references public.config_medios_pago(id) on update cascade on delete set null
 );
+
+alter table public.registro_pagos_detalle add column if not exists nro_operacion text;
 
 insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
 select
@@ -281,12 +403,13 @@ set concepto = excluded.concepto,
 	monto = excluded.monto,
 	concepto_id = excluded.concepto_id;
 
-insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
 select
 	r.id,
 	detalle.ord::int,
 	upper(trim(coalesce(detalle.value->>'medioPago', ''))),
 	coalesce((detalle.value->>'monto')::numeric, 0),
+	nullif(upper(regexp_replace(trim(coalesce(detalle.value->>'nroOperacion', '')), '\s+', '', 'g')), ''),
 	m.id
 from public.registros r
 join lateral jsonb_array_elements(coalesce(r."pagosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord) on true
@@ -296,14 +419,16 @@ where upper(trim(coalesce(detalle.value->>'medioPago', ''))) <> ''
 on conflict (registro_id, orden) do update
 set medio_pago = excluded.medio_pago,
 	monto = excluded.monto,
+	nro_operacion = excluded.nro_operacion,
 	medio_pago_id = excluded.medio_pago_id;
 
-insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, medio_pago_id)
+insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
 select
 	r.id,
 	1,
 	upper(trim(coalesce(r."medioPago", ''))),
 	coalesce(r.subtotal, 0),
+	null,
 	m.id
 from public.registros r
 left join public.config_medios_pago m
@@ -313,6 +438,7 @@ where coalesce(jsonb_array_length(coalesce(r."pagosDetalle", '[]'::jsonb)), 0) =
 on conflict (registro_id, orden) do update
 set medio_pago = excluded.medio_pago,
 	monto = excluded.monto,
+	nro_operacion = excluded.nro_operacion,
 	medio_pago_id = excluded.medio_pago_id;
 
 create table if not exists public.cierre_registros (
@@ -371,15 +497,23 @@ on conflict do nothing;
 
 create index if not exists idx_registros_fecha on public.registros (fecha);
 create index if not exists idx_registros_created_at on public.registros ("createdAt");
+create index if not exists idx_registros_updated_at on public.registros ("updatedAt");
 create index if not exists idx_gastos_fecha on public.gastos (fecha);
 create index if not exists idx_gastos_created_at on public.gastos ("createdAt");
+create index if not exists idx_gastos_updated_at on public.gastos ("updatedAt");
 create index if not exists idx_ingresos_fecha on public.ingresos (fecha);
 create index if not exists idx_ingresos_created_at on public.ingresos ("createdAt");
+create index if not exists idx_ingresos_updated_at on public.ingresos ("updatedAt");
 create index if not exists idx_cierres_fecha on public.cierres (fecha);
 create index if not exists idx_cierres_created_at on public.cierres ("createdAt");
+create index if not exists idx_cierres_updated_at on public.cierres ("updatedAt");
+create index if not exists idx_movimientos_bancarios_fecha on public.movimientos_bancarios (fecha);
+create index if not exists idx_movimientos_bancarios_nro_operacion on public.movimientos_bancarios (nro_operacion);
+create index if not exists idx_movimientos_bancarios_estado on public.movimientos_bancarios (conciliacion_estado);
 create index if not exists idx_registro_conceptos_detalle_concepto_id on public.registro_conceptos_detalle (concepto_id);
 create index if not exists idx_registro_pagos_detalle_medio_pago_id on public.registro_pagos_detalle (medio_pago_id);
 create index if not exists idx_registro_pagos_detalle_medio_pago on public.registro_pagos_detalle (medio_pago);
+create index if not exists idx_registro_pagos_detalle_nro_operacion on public.registro_pagos_detalle (nro_operacion);
 create index if not exists idx_cierre_registros_registro_id on public.cierre_registros (registro_id);
 create index if not exists idx_cierre_ingresos_ingreso_id on public.cierre_ingresos (ingreso_id);
 create index if not exists idx_cierre_gastos_gasto_id on public.cierre_gastos (gasto_id);

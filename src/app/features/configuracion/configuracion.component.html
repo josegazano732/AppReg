@@ -103,4 +103,20 @@
       <small class="text-danger" *ngIf="editError.tiposIngreso">{{ editError.tiposIngreso }}</small>
     </article>
   </div>
+
+  <section class="danger-zone mt-4">
+    <div>
+      <h4>Zona temporal de mantenimiento</h4>
+      <p class="mb-0">Boton provisorio para vaciar la base remota y limpiar el estado local. Despues se puede ocultar o quitar.</p>
+    </div>
+
+    <div class="danger-actions">
+      <button class="btn btn-danger" type="button" (click)="borrarTodo()" [disabled]="borrandoDatos">
+        {{ borrandoDatos ? 'Borrando...' : 'Borrar todos los datos' }}
+      </button>
+    </div>
+
+    <small class="text-success" *ngIf="borradoMensaje">{{ borradoMensaje }}</small>
+    <small class="text-danger" *ngIf="borradoError">{{ borradoError }}</small>
+  </section>
 </section>

@@ -226,6 +226,30 @@
 	margin-bottom: 0;
 }
 
+.payment-item {
+	display: grid;
+	gap: 0.35rem;
+	margin-bottom: 0.45rem;
+}
+
+.payment-item:last-child {
+	margin-bottom: 0;
+}
+
+.payment-grid {
+	margin-bottom: 0;
+}
+
+.payment-extra-row {
+	padding-left: 2.35rem;
+}
+
+.payment-operation-field {
+	display: grid;
+	gap: 0.25rem;
+	max-width: 360px;
+}
+
 .detail-grid .form-control,
 .detail-grid .form-select,
 .detail-grid .btn {
@@ -686,6 +710,10 @@
 
 	.detail-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.payment-extra-row {
+		padding-left: 0;
 	}
 
 	.summary-strip {

@@ -1,16 +1,13 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { ConfiguracionCaja } from '../../shared/models/finance.model';
+import { ConfigRepository } from '../repositories/config.repository';
 import { SupabaseService } from './supabase.service';
 import { LoggerService } from './logger.service';
 
 @Injectable({ providedIn: 'root' })
 export class ConfigService {
   private readonly STORAGE_KEY = 'appreg.configuracion';
-  private readonly TABLE_CONCEPTOS = 'config_conceptos';
-  private readonly TABLE_MEDIOS = 'config_medios_pago';
-  private readonly TABLE_TIPOS_SALIDA = 'config_tipos_salida';
-  private readonly TABLE_TIPOS_INGRESO = 'config_tipos_ingreso';
   private readonly defaultConfig: ConfiguracionCaja = {
     conceptos: ['SELLADOS', 'MUNI', 'SUGIT', 'PATENTE', 'ANT. PENALES'],
     mediosPago: ['EFECTIVO', 'CHEQUES', 'POSNET', 'VEP', 'SITE', 'DEPOSITO'],
@@ -30,8 +27,18 @@ export class ConfigService {
   private tiposIngreso$ = new BehaviorSubject<string[]>([]);
   tiposIngreso = this.tiposIngreso$.asObservable();
 
+  private readonly repository: ConfigRepository;
+
   constructor(private supabase: SupabaseService, private logger: LoggerService) {
-    const config = this.loadConfig();
+    this.repository = new ConfigRepository({
+      storageKey: this.STORAGE_KEY,
+      defaultConfig: this.defaultConfig,
+      supabase: this.supabase,
+      logger: this.logger,
+      normalizeList: list => this.normalizeList(list)
+    });
+
+    const config = this.repository.loadLocal();
     this.conceptos$.next(config.conceptos);
     this.medios$.next(config.mediosPago);
     this.tiposSalida$.next(config.tiposSalida);
@@ -52,7 +59,6 @@ export class ConfigService {
     const next = this.normalizeList(list);
     this.conceptos$.next(next);
     this.persist();
-    this.pushRemote(this.TABLE_CONCEPTOS, next);
   }
 
   removeConcepto(index: number) {
@@ -72,7 +78,6 @@ export class ConfigService {
     const next = this.normalizeList(list);
     this.medios$.next(next);
     this.persist();
-    this.pushRemote(this.TABLE_MEDIOS, next);
   }
 
   removeMedio(index: number) {
@@ -92,7 +97,6 @@ export class ConfigService {
     const next = this.normalizeList(list);
     this.tiposSalida$.next(next);
     this.persist();
-    this.pushRemote(this.TABLE_TIPOS_SALIDA, next);
   }
 
   removeTipoSalida(index: number) {
@@ -112,12 +116,19 @@ export class ConfigService {
     const next = this.normalizeList(list);
     this.tiposIngreso$.next(next);
     this.persist();
-    this.pushRemote(this.TABLE_TIPOS_INGRESO, next);
   }
 
   removeTipoIngreso(index: number) {
     const next = this.getTiposIngreso().filter((_, i) => i !== index);
     this.updateTiposIngreso(next);
+  }
+
+  async clearAllData() {
+    await this.repository.clear();
+    this.conceptos$.next([...this.defaultConfig.conceptos]);
+    this.medios$.next([...this.defaultConfig.mediosPago]);
+    this.tiposSalida$.next([...this.defaultConfig.tiposSalida]);
+    this.tiposIngreso$.next([...this.defaultConfig.tiposIngreso]);
   }
 
   private normalize(value: string): string {
@@ -133,69 +144,35 @@ export class ConfigService {
     return normalized.includes(value) ? normalized : [...normalized, value];
   }
 
-  private loadConfig(): ConfiguracionCaja {
-    try {
-      const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (!raw) return this.defaultConfig;
-      const parsed = JSON.parse(raw) as Partial<ConfiguracionCaja>;
-      return {
-        conceptos: this.normalizeList(parsed.conceptos || this.defaultConfig.conceptos),
-        mediosPago: this.normalizeList(parsed.mediosPago || this.defaultConfig.mediosPago),
-        tiposSalida: this.normalizeList(parsed.tiposSalida || this.defaultConfig.tiposSalida),
-        tiposIngreso: this.normalizeList(parsed.tiposIngreso || this.defaultConfig.tiposIngreso)
-      };
-    } catch {
-      return this.defaultConfig;
-    }
-  }
-
   private persist() {
-    const payload: ConfiguracionCaja = {
+    const payload = this.repository.save({
       conceptos: this.getConceptos(),
       mediosPago: this.getMedios(),
       tiposSalida: this.getTiposSalida(),
       tiposIngreso: this.getTiposIngreso()
-    };
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(payload));
+    });
+
+    this.conceptos$.next(payload.conceptos);
+    this.medios$.next(payload.mediosPago);
+    this.tiposSalida$.next(payload.tiposSalida);
+    this.tiposIngreso$.next(payload.tiposIngreso);
   }
 
   private async hydrateFromSupabase() {
-    if (!this.supabase.isEnabled()) {
-      return;
-    }
-
-    try {
-      const [conceptos, medios, tiposSalida, tiposIngreso] = await Promise.all([
-        this.supabase.fetchConfigValues(this.TABLE_CONCEPTOS),
-        this.supabase.fetchConfigValues(this.TABLE_MEDIOS),
-        this.supabase.fetchConfigValues(this.TABLE_TIPOS_SALIDA),
-        this.supabase.fetchConfigValues(this.TABLE_TIPOS_INGRESO)
-      ]);
-
-      const next: ConfiguracionCaja = {
-        conceptos: conceptos.length ? this.normalizeList(conceptos) : this.getConceptos(),
-        mediosPago: medios.length ? this.normalizeList(medios) : this.getMedios(),
-        tiposSalida: tiposSalida.length ? this.normalizeList(tiposSalida) : this.getTiposSalida(),
-        tiposIngreso: tiposIngreso.length ? this.normalizeList(tiposIngreso) : this.getTiposIngreso()
-      };
-
-      this.conceptos$.next(next.conceptos);
-      this.medios$.next(next.mediosPago);
-      this.tiposSalida$.next(next.tiposSalida);
-      this.tiposIngreso$.next(next.tiposIngreso);
-      this.persist();
-    } catch (error) {
-      this.logger.warn('No se pudo hidratar configuración desde Supabase. Se mantiene modo local.', error);
-    }
-  }
-
-  private pushRemote(table: string, values: string[]) {
-    if (!this.supabase.isEnabled()) {
-      return;
-    }
-
-    this.supabase.replaceConfigValues(table, values).catch(error => {
-      this.logger.warn(`No se pudo sincronizar configuración en ${table}.`, error);
+    const next = await this.repository.hydrate({
+      conceptos: this.getConceptos(),
+      mediosPago: this.getMedios(),
+      tiposSalida: this.getTiposSalida(),
+      tiposIngreso: this.getTiposIngreso()
     });
+
+    if (!next) {
+      return;
+    }
+
+    this.conceptos$.next(next.conceptos);
+    this.medios$.next(next.mediosPago);
+    this.tiposSalida$.next(next.tiposSalida);
+    this.tiposIngreso$.next(next.tiposIngreso);
   }
 }

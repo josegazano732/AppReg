@@ -6,11 +6,13 @@ export interface RegistroConceptoDetalle {
 export interface RegistroPagoDetalle {
   medioPago: string;
   monto: number;
+  nroOperacion?: string;
 }
 
 export interface Registro {
   id: string;
   createdAt: string;
+  updatedAt?: string;
   fecha?: string;
   nroRecibo: string;
   nombre: string;
@@ -60,6 +62,7 @@ export interface Gasto {
   observacion?: string;
   comprobante?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface IngresoCaja {
@@ -72,6 +75,7 @@ export interface IngresoCaja {
   observacion?: string;
   comprobante?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CierreResumen {
@@ -90,6 +94,7 @@ export interface CierreCaja {
   id: string;
   fecha: string;
   createdAt: string;
+  updatedAt?: string;
   totalIngresos: number;
   totalGastos: number;
   totalNeto: number;
@@ -117,6 +122,25 @@ export interface CierreCaja {
     ingresos: number;
     egresos: number;
   };
+}
+
+export interface MovimientoBancario {
+  id: string;
+  fecha: string;
+  createdAt: string;
+  updatedAt?: string;
+  banco?: string;
+  cuenta?: string;
+  descripcion: string;
+  monto: number;
+  tipo: 'CREDITO' | 'DEBITO';
+  nroOperacion?: string;
+  referenciaExterna?: string;
+  origenImportacion?: string;
+  conciliacionEstado?: 'PENDIENTE' | 'CONCILIADO' | 'REVISAR';
+  conciliadoRegistroId?: string;
+  conciliadoPagoOrden?: number;
+  conciliadoAt?: string;
 }
 
 export interface ConfiguracionCaja {

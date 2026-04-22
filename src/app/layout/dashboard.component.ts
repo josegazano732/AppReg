@@ -27,6 +27,8 @@ export class DashboardComponent {
     { label: 'Control de caja', route: '/control-caja', icon: 'wallet' },
     { label: 'Cierre diario', route: '/cierre', icon: 'shield-check' },
     { label: 'Trazabilidad caja', route: '/trazabilidad-caja', icon: 'activity' },
+    { label: 'Movimientos por medio', route: '/movimientos-medios', icon: 'list' },
+    { label: 'Conciliacion bancaria', route: '/conciliacion-bancaria', icon: 'landmark' },
     { label: 'Configuracion', route: '/configuracion', icon: 'settings' }
   ];
 

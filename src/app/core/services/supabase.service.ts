@@ -51,6 +51,79 @@ export class SupabaseService {
     }
   }
 
+  async replaceRows<T extends Record<string, any>>(
+    table: string,
+    rows: T[],
+    keyField: keyof T & string,
+    onConflict?: string
+  ): Promise<void> {
+    if (!this.client) return;
+
+    const { data: existingRows, error: fetchError } = await this.client
+      .from(table)
+      .select(keyField);
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const existingKeyMap = new Map<string, unknown>();
+    (existingRows || [])
+      .map(row => (row as Record<string, unknown> | null | undefined)?.[keyField])
+      .filter(value => value !== null && value !== undefined)
+      .forEach(value => {
+        existingKeyMap.set(String(value), value);
+      });
+
+    const nextRows = (rows || []).filter(row => row?.[keyField] !== null && row?.[keyField] !== undefined);
+    const nextKeys = new Set(nextRows.map(row => String(row[keyField])));
+    const keysToDelete = [...existingKeyMap.entries()]
+      .filter(([serializedKey]) => !nextKeys.has(serializedKey))
+      .map(([, originalValue]) => originalValue);
+
+    if (nextRows.length) {
+      const { error: upsertError } = await this.client
+        .from(table)
+        .upsert(nextRows as any, onConflict ? { onConflict } : { onConflict: keyField });
+
+      if (upsertError) {
+        throw upsertError;
+      }
+    }
+
+    if (keysToDelete.length) {
+      const { error: deleteError } = await this.client
+        .from(table)
+        .delete()
+        .in(keyField, keysToDelete as any);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+    }
+  }
+
+  async deleteAllRows(
+    table: string,
+    filter: { column: string; operator: 'neq' | 'gte'; value: string | number }
+  ): Promise<void> {
+    if (!this.client) return;
+
+    let query = this.client.from(table).delete();
+
+    if (filter.operator === 'neq') {
+      query = query.neq(filter.column, filter.value);
+    } else {
+      query = query.gte(filter.column, filter.value);
+    }
+
+    const { error } = await query;
+
+    if (error) {
+      throw error;
+    }
+  }
+
   async fetchConfigValues(table: string): Promise<string[]> {
     if (!this.client) return [];
 

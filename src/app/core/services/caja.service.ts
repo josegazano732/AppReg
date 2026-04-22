@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { Registro, TotalesMedioPago, Billete, Gasto, CierreResumen, RegistroPagoDetalle, IngresoCaja, CierreCaja } from '../../shared/models/finance.model';
+import { SyncCollectionRepository } from '../repositories/sync-collection.repository';
 import { SupabaseService } from './supabase.service';
 import { LoggerService } from './logger.service';
 
@@ -17,23 +18,80 @@ export class CajaService {
   private readonly TABLE_INGRESOS = 'ingresos';
   private readonly TABLE_CIERRES = 'cierres';
 
-  private registros$ = new BehaviorSubject<Registro[]>(this.normalizeRegistros(this.readStorage<Registro[]>(this.STORAGE_REGISTROS, [])));
+  private readonly registrosRepository: SyncCollectionRepository<Registro>;
+  private readonly billetesRepository: SyncCollectionRepository<Billete>;
+  private readonly gastosRepository: SyncCollectionRepository<Gasto>;
+  private readonly ingresosRepository: SyncCollectionRepository<IngresoCaja>;
+  private readonly cierresRepository: SyncCollectionRepository<CierreCaja>;
+
+  private registros$ = new BehaviorSubject<Registro[]>([]);
   registros = this.registros$.asObservable();
 
-  private billetes$ = new BehaviorSubject<Billete[]>(this.readStorage<Billete[]>(this.STORAGE_BILLETES, []));
+  private billetes$ = new BehaviorSubject<Billete[]>([]);
   billetes = this.billetes$.asObservable();
 
-  private gastos$ = new BehaviorSubject<Gasto[]>(this.normalizeGastos(this.readStorage<Gasto[]>(this.STORAGE_GASTOS, [])));
+  private gastos$ = new BehaviorSubject<Gasto[]>([]);
   gastos = this.gastos$.asObservable();
 
-  private ingresos$ = new BehaviorSubject<IngresoCaja[]>(this.normalizeIngresos(this.readStorage<IngresoCaja[]>(this.STORAGE_INGRESOS, [])));
+  private ingresos$ = new BehaviorSubject<IngresoCaja[]>([]);
   ingresos = this.ingresos$.asObservable();
 
-  private cierres$ = new BehaviorSubject<CierreCaja[]>(this.normalizeCierres(this.readStorage<CierreCaja[]>(this.STORAGE_CIERRES, [])));
+  private cierres$ = new BehaviorSubject<CierreCaja[]>([]);
   cierres = this.cierres$.asObservable();
 
   constructor(private supabase: SupabaseService, private logger: LoggerService) {
-    this.persistNormalizedState();
+    this.registrosRepository = new SyncCollectionRepository<Registro>({
+      storageKey: this.STORAGE_REGISTROS,
+      table: this.TABLE_REGISTROS,
+      conflictKey: 'id',
+      orderBy: 'createdAt',
+      normalizeList: list => this.normalizeRegistros(list),
+      supabase: this.supabase,
+      logger: this.logger
+    });
+    this.billetesRepository = new SyncCollectionRepository<Billete>({
+      storageKey: this.STORAGE_BILLETES,
+      table: this.TABLE_BILLETES,
+      conflictKey: 'valor',
+      orderBy: 'valor',
+      normalizeList: list => this.normalizeBilletes(list),
+      supabase: this.supabase,
+      logger: this.logger
+    });
+    this.gastosRepository = new SyncCollectionRepository<Gasto>({
+      storageKey: this.STORAGE_GASTOS,
+      table: this.TABLE_GASTOS,
+      conflictKey: 'id',
+      orderBy: 'createdAt',
+      normalizeList: list => this.normalizeGastos(list),
+      supabase: this.supabase,
+      logger: this.logger
+    });
+    this.ingresosRepository = new SyncCollectionRepository<IngresoCaja>({
+      storageKey: this.STORAGE_INGRESOS,
+      table: this.TABLE_INGRESOS,
+      conflictKey: 'id',
+      orderBy: 'createdAt',
+      normalizeList: list => this.normalizeIngresos(list),
+      supabase: this.supabase,
+      logger: this.logger
+    });
+    this.cierresRepository = new SyncCollectionRepository<CierreCaja>({
+      storageKey: this.STORAGE_CIERRES,
+      table: this.TABLE_CIERRES,
+      conflictKey: 'id',
+      orderBy: 'createdAt',
+      normalizeList: list => this.normalizeCierres(list),
+      supabase: this.supabase,
+      logger: this.logger
+    });
+
+    this.registros$.next(this.registrosRepository.loadLocal());
+    this.billetes$.next(this.billetesRepository.loadLocal());
+    this.gastos$.next(this.gastosRepository.loadLocal());
+    this.ingresos$.next(this.ingresosRepository.loadLocal());
+    this.cierres$.next(this.cierresRepository.loadLocal());
+
     this.hydrateFromSupabase();
   }
 
@@ -61,21 +119,35 @@ export class CajaService {
     return this.cierres$.getValue();
   }
 
-  updateRegistros(list: Registro[]) {
-    const safe = this.normalizeRegistros(list || []);
-    this.registros$.next(safe);
-    this.writeStorage(this.STORAGE_REGISTROS, safe);
-    this.pushRemote(this.TABLE_REGISTROS, safe, 'id');
+  existsOperacionTransferencia(nroOperacion: string): boolean {
+    const normalized = this.normalizeOperacionTransferencia(nroOperacion);
+    if (!normalized) {
+      return false;
+    }
+
+    return this.getRegistrosSnapshot().some(registro =>
+      this.normalizeRegistroPagos(registro).some(pago =>
+        this.isTransferenciaMedioKey(pago.medioPago)
+        && this.normalizeOperacionTransferencia(pago.nroOperacion) === normalized
+      )
+    );
   }
 
-  addRegistro(registro: Omit<Registro, 'id' | 'createdAt'>) {
+  updateRegistros(list: Registro[]) {
+    const safe = this.registrosRepository.save(list || []);
+    this.registros$.next(safe);
+  }
+
+  addRegistro(registro: Omit<Registro, 'id' | 'createdAt' | 'updatedAt'>) {
     const current = this.getRegistrosSnapshot();
     const fechaOperativa = registro.fecha || this.todayDateKey();
+    const createdAt = this.buildCreatedAtForOperationalDate(fechaOperativa);
     const next: Registro = {
       ...registro,
       id: crypto.randomUUID(),
       fecha: fechaOperativa,
-      createdAt: this.buildCreatedAtForOperationalDate(fechaOperativa)
+      createdAt,
+      updatedAt: createdAt
     };
     this.updateRegistros([...current, next]);
   }
@@ -91,26 +163,24 @@ export class CajaService {
   }
 
   updateBilletes(list: Billete[]) {
-    this.billetes$.next(list || []);
-    this.writeStorage(this.STORAGE_BILLETES, list || []);
-    this.pushRemote(this.TABLE_BILLETES, list || [], 'valor');
+    this.billetes$.next(this.billetesRepository.save(list || []));
   }
 
   updateGastos(list: Gasto[]) {
-    const safe = this.normalizeGastos(list || []);
+    const safe = this.gastosRepository.save(list || []);
     this.gastos$.next(safe);
-    this.writeStorage(this.STORAGE_GASTOS, safe);
-    this.pushRemote(this.TABLE_GASTOS, safe, 'id');
   }
 
-  addGasto(gasto: Omit<Gasto, 'id' | 'createdAt'>) {
+  addGasto(gasto: Omit<Gasto, 'id' | 'createdAt' | 'updatedAt'>) {
     const current = this.getGastosSnapshot();
+    const createdAt = new Date().toISOString();
     const next: Gasto = {
       ...gasto,
       id: crypto.randomUUID(),
       fecha: gasto.fecha || this.todayDateKey(),
       medioPago: (gasto.medioPago || 'EFECTIVO').toUpperCase(),
-      createdAt: new Date().toISOString()
+      createdAt,
+      updatedAt: createdAt
     };
     this.updateGastos([...current, next]);
   }
@@ -121,21 +191,21 @@ export class CajaService {
   }
 
   updateIngresos(list: IngresoCaja[]) {
-    const safe = this.normalizeIngresos(list || []);
+    const safe = this.ingresosRepository.save(list || []);
     this.ingresos$.next(safe);
-    this.writeStorage(this.STORAGE_INGRESOS, safe);
-    this.pushRemote(this.TABLE_INGRESOS, safe, 'id');
   }
 
-  addIngreso(ingreso: Omit<IngresoCaja, 'id' | 'createdAt'>) {
+  addIngreso(ingreso: Omit<IngresoCaja, 'id' | 'createdAt' | 'updatedAt'>) {
     const current = this.getIngresosSnapshot();
+    const createdAt = new Date().toISOString();
     const next: IngresoCaja = {
       ...ingreso,
       id: crypto.randomUUID(),
       fecha: ingreso.fecha || this.todayDateKey(),
       medioPago: (ingreso.medioPago || 'EFECTIVO').toUpperCase(),
       tipoIngreso: (ingreso.tipoIngreso || 'OTROS').toUpperCase(),
-      createdAt: new Date().toISOString()
+      createdAt,
+      updatedAt: createdAt
     };
     this.updateIngresos([...current, next]);
   }
@@ -146,10 +216,24 @@ export class CajaService {
   }
 
   updateCierres(list: CierreCaja[]) {
-    const safe = this.normalizeCierres(list || []);
+    const safe = this.cierresRepository.save(list || []);
     this.cierres$.next(safe);
-    this.writeStorage(this.STORAGE_CIERRES, safe);
-    this.pushRemote(this.TABLE_CIERRES, safe, 'id');
+  }
+
+  async clearAllData() {
+    await Promise.all([
+      this.registrosRepository.clear({ column: 'id', operator: 'neq', value: '' }),
+      this.gastosRepository.clear({ column: 'id', operator: 'neq', value: '' }),
+      this.ingresosRepository.clear({ column: 'id', operator: 'neq', value: '' }),
+      this.cierresRepository.clear({ column: 'id', operator: 'neq', value: '' }),
+      this.billetesRepository.clear({ column: 'valor', operator: 'gte', value: 0 })
+    ]);
+
+    this.registros$.next([]);
+    this.billetes$.next([]);
+    this.gastos$.next([]);
+    this.ingresos$.next([]);
+    this.cierres$.next([]);
   }
 
   getCierreByFecha(fecha: string): CierreCaja | null {
@@ -199,10 +283,12 @@ export class CajaService {
     const disponibleBase = Number(this.getDisponibleContinuidadParaNuevoCierre(fecha) || 0);
     const disponibleContinuidad = disponibleBase + Number(resumen.saldo.efectivo || 0);
 
+    const createdAt = new Date().toISOString();
     const cierre: CierreCaja = {
       id: crypto.randomUUID(),
       fecha,
-      createdAt: new Date().toISOString(),
+      createdAt,
+      updatedAt: createdAt,
       totalIngresos: Number(resumen.totalIngresos || 0),
       totalGastos: Number(resumen.totalGastos || 0),
       totalNeto: Number(resumen.totalNeto || 0),
@@ -507,20 +593,6 @@ export class CajaService {
     return resumen;
   }
 
-  private readStorage<T>(key: string, fallback: T): T {
-    try {
-      const value = localStorage.getItem(key);
-      if (!value) return fallback;
-      return JSON.parse(value) as T;
-    } catch {
-      return fallback;
-    }
-  }
-
-  private writeStorage<T>(key: string, value: T) {
-    localStorage.setItem(key, JSON.stringify(value));
-  }
-
   private todayDateKey(): string {
     return this.toDateKeyLocal(new Date());
   }
@@ -640,69 +712,104 @@ export class CajaService {
   }
 
   private async hydrateFromSupabase() {
-    if (!this.supabase.isEnabled()) {
-      return;
+    const [registros, billetes, gastos, ingresos, cierres] = await Promise.all([
+      this.registrosRepository.hydrate(),
+      this.billetesRepository.hydrate(),
+      this.gastosRepository.hydrate(),
+      this.ingresosRepository.hydrate(),
+      this.cierresRepository.hydrate()
+    ]);
+
+    if (registros) {
+      this.registros$.next(registros);
     }
 
-    try {
-      const [registros, billetes, gastos, ingresos, cierres] = await Promise.all([
-        this.supabase.fetchRows<Registro>(this.TABLE_REGISTROS),
-        this.supabase.fetchRows<Billete>(this.TABLE_BILLETES, 'valor'),
-        this.supabase.fetchRows<Gasto>(this.TABLE_GASTOS),
-        this.supabase.fetchRows<IngresoCaja>(this.TABLE_INGRESOS),
-        this.supabase.fetchRows<CierreCaja>(this.TABLE_CIERRES)
-      ]);
+    if (billetes) {
+      this.billetes$.next(billetes);
+    }
 
-      if (registros.length) {
-        const safe = this.normalizeRegistros(registros);
-        this.registros$.next(safe);
-        this.writeStorage(this.STORAGE_REGISTROS, safe);
-      }
+    if (gastos) {
+      this.gastos$.next(gastos);
+    }
 
-      if (billetes.length) {
-        this.billetes$.next(billetes);
-        this.writeStorage(this.STORAGE_BILLETES, billetes);
-      }
+    if (ingresos) {
+      this.ingresos$.next(ingresos);
+    }
 
-      if (gastos.length) {
-        const safe = this.normalizeGastos(gastos);
-        this.gastos$.next(safe);
-        this.writeStorage(this.STORAGE_GASTOS, safe);
-      }
-
-      if (ingresos.length) {
-        const safe = this.normalizeIngresos(ingresos);
-        this.ingresos$.next(safe);
-        this.writeStorage(this.STORAGE_INGRESOS, safe);
-      }
-
-      if (cierres.length) {
-        const safe = this.normalizeCierres(cierres);
-        this.cierres$.next(safe);
-        this.writeStorage(this.STORAGE_CIERRES, safe);
-      }
-    } catch (error) {
-      this.logger.warn('No se pudo hidratar desde Supabase. Se mantiene modo local.', error);
+    if (cierres) {
+      this.cierres$.next(cierres);
     }
   }
 
-  private pushRemote<T extends object>(table: string, rows: T[], onConflict?: string) {
-    if (!this.supabase.isEnabled()) {
-      return;
-    }
-
-    this.supabase.upsertRows(table, rows, onConflict).catch(error => {
-      this.logger.warn(`No se pudo sincronizar la tabla ${table} en Supabase.`, error);
-    });
+  private normalizeBilletes(list: Billete[]): Billete[] {
+    return (list || []).map(item => ({
+      valor: Number(item.valor || 0),
+      cantidad: Number(item.cantidad || 0),
+      subtotal: Number(item.subtotal || 0)
+    }));
   }
 
   private normalizeRegistros(list: Registro[]): Registro[] {
-    return (list || []).map(item => ({
-      ...item,
-      id: item.id || crypto.randomUUID(),
-      fecha: this.normalizeRegistroFecha(item),
-      createdAt: item.createdAt || new Date().toISOString()
-    }));
+    return (list || []).map(item => {
+      const pagosDetalle = this.normalizeRegistroPagos(item);
+      return {
+        ...item,
+        id: item.id || crypto.randomUUID(),
+        pagosDetalle,
+        medioPago: pagosDetalle[0]?.medioPago || (item.medioPago || 'EFECTIVO').toUpperCase(),
+        fecha: this.normalizeRegistroFecha(item),
+        createdAt: item.createdAt || new Date().toISOString(),
+        updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
+      };
+    });
+  }
+
+  private normalizeRegistroPagos(item: Registro): RegistroPagoDetalle[] {
+    if (item.pagosDetalle?.length) {
+      return item.pagosDetalle
+        .map(pago => ({
+          medioPago: String(pago.medioPago || '').trim().toUpperCase(),
+          monto: Number(pago.monto || 0),
+          nroOperacion: this.isTransferenciaMedioKey(pago.medioPago)
+            ? this.normalizeOperacionTransferencia(pago.nroOperacion)
+            : undefined
+        }))
+        .filter(pago => pago.medioPago && pago.monto > 0);
+    }
+
+    const legacyPagos: RegistroPagoDetalle[] = [
+      { medioPago: 'EFECTIVO', monto: Number(item.efectivo || 0) },
+      { medioPago: 'CHEQUES', monto: Number(item.cheques || 0) },
+      { medioPago: 'POSNET', monto: Number(item.posnet || 0) },
+      { medioPago: 'VEP', monto: Number(item.vep || 0) },
+      { medioPago: 'SITE', monto: Number(item.site || 0) },
+      { medioPago: 'DEPOSITO', monto: Number(item.deposito || 0) }
+    ].filter(pago => pago.monto > 0);
+
+    if (legacyPagos.length) {
+      return legacyPagos;
+    }
+
+    const medioPago = String(item.medioPago || '').trim().toUpperCase();
+    const subtotal = Number(item.subtotal || 0);
+    if (!medioPago || subtotal <= 0) {
+      return [];
+    }
+
+    return [{ medioPago, monto: subtotal }];
+  }
+
+  private isTransferenciaMedioKey(value?: string): boolean {
+    return /TRANSFER|CBU|CVU/.test(this.normalizeMedioKey(value));
+  }
+
+  private normalizeOperacionTransferencia(value?: string): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '')
+      .trim()
+      .toUpperCase();
   }
 
   private normalizeRegistroFecha(item: Registro): string {
@@ -727,7 +834,8 @@ export class CajaService {
       id: item.id || crypto.randomUUID(),
       fecha: item.fecha || this.todayDateKey(),
       medioPago: (item.medioPago || 'EFECTIVO').toUpperCase(),
-      createdAt: item.createdAt || new Date().toISOString()
+      createdAt: item.createdAt || new Date().toISOString(),
+      updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
     }));
   }
 
@@ -738,7 +846,8 @@ export class CajaService {
       fecha: item.fecha || this.todayDateKey(),
       medioPago: (item.medioPago || 'EFECTIVO').toUpperCase(),
       tipoIngreso: (item.tipoIngreso || 'OTROS').toUpperCase(),
-      createdAt: item.createdAt || new Date().toISOString()
+      createdAt: item.createdAt || new Date().toISOString(),
+      updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
     }));
   }
 
@@ -753,18 +862,12 @@ export class CajaService {
         saldo: Number(d.saldo || 0)
       })),
       createdAt: item.createdAt || new Date().toISOString(),
+      updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
       referencias: {
         registroIds: [...new Set((item.referencias?.registroIds || []).filter(Boolean))],
         ingresoIds: [...new Set((item.referencias?.ingresoIds || []).filter(Boolean))],
         egresoIds: [...new Set((item.referencias?.egresoIds || []).filter(Boolean))]
       }
     }));
-  }
-
-  private persistNormalizedState() {
-    this.writeStorage(this.STORAGE_REGISTROS, this.getRegistrosSnapshot());
-    this.writeStorage(this.STORAGE_GASTOS, this.getGastosSnapshot());
-    this.writeStorage(this.STORAGE_INGRESOS, this.getIngresosSnapshot());
-    this.writeStorage(this.STORAGE_CIERRES, this.getCierresSnapshot());
   }
 }

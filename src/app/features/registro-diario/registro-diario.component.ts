@@ -22,16 +22,9 @@ interface DisponibilidadMedio {
   styleUrls: ['./registro-diario.component.css']
 })
 export class RegistroDiarioComponent implements OnInit {
-  fechaOperativa = this.caja.getTodayDateKey();
+  fechaOperativa: string;
   expandedRegistroIds = new Set<string>();
-  registroForm = this.fb.group({
-    nroRecibo: ['', Validators.required],
-    nombre: ['', Validators.required],
-    subtotal: [{ value: 0, disabled: true }, [Validators.required, Validators.min(0)]],
-    observacion: [''],
-    conceptosDetalle: this.fb.array([this.buildConceptoItem()]),
-    pagosDetalle: this.fb.array([this.buildPagoItem('EFECTIVO')])
-  });
+  registroForm!: ReturnType<FormBuilder['group']>;
 
   registros: Registro[] = [];
   conceptos: string[] = [];
@@ -51,7 +44,17 @@ export class RegistroDiarioComponent implements OnInit {
     otros: {}
   };
 
-  constructor(private fb: FormBuilder, private caja: CajaService, private cfg: ConfigService) {}
+  constructor(private fb: FormBuilder, private caja: CajaService, private cfg: ConfigService) {
+    this.fechaOperativa = this.caja.getTodayDateKey();
+    this.registroForm = this.fb.group({
+      nroRecibo: ['', Validators.required],
+      nombre: ['', Validators.required],
+      subtotal: [{ value: 0, disabled: true }, [Validators.required, Validators.min(0)]],
+      observacion: [''],
+      conceptosDetalle: this.fb.array([this.buildConceptoItem()]),
+      pagosDetalle: this.fb.array([this.buildPagoItem('EFECTIVO')])
+    });
+  }
 
   ngOnInit() {
     this.refreshRegistrosPendientes();
@@ -253,7 +256,63 @@ export class RegistroDiarioComponent implements OnInit {
   }
 
   canSubmit(): boolean {
-    return this.subtotalActual > 0 && this.diferenciaActual === 0;
+    return this.subtotalActual > 0 && this.diferenciaActual === 0 && !this.hasPagosTransferenciaInvalidos();
+  }
+
+  isTransferenciaPago(index: number): boolean {
+    const group = this.pagosDetalle.at(index);
+    return this.isTransferenciaMedio(group?.get('medioPago')?.value);
+  }
+
+  onPagoMedioChange(index: number) {
+    const group = this.pagosDetalle.at(index);
+    if (!group || this.isTransferenciaPago(index)) {
+      return;
+    }
+
+    group.get('nroOperacion')?.setValue('', { emitEvent: false });
+  }
+
+  onPagoOperacionInput(index: number) {
+    const control = this.pagosDetalle.at(index)?.get('nroOperacion');
+    if (!control) return;
+
+    const normalized = this.normalizeNroOperacion(control.value);
+    if (normalized !== control.value) {
+      control.setValue(normalized, { emitEvent: false });
+    }
+  }
+
+  getPagoOperacionError(index: number): string {
+    const group = this.pagosDetalle.at(index);
+    if (!group || !this.isTransferenciaPago(index)) {
+      return '';
+    }
+
+    const control = group.get('nroOperacion');
+    const normalized = this.normalizeNroOperacion(control?.value);
+    const touched = !!control?.touched || this.registroForm.touched;
+    if (!touched) {
+      return '';
+    }
+
+    if (!normalized) {
+      return 'Ingresa el nro de operacion o transaccion para conciliar la transferencia.';
+    }
+
+    if (!this.isNroOperacionValido(normalized)) {
+      return 'Usa entre 6 y 40 caracteres alfanumericos. Se permiten . - _ /';
+    }
+
+    if (this.isOperacionDuplicadaEnFormulario(index, normalized)) {
+      return 'Ese nro de operacion ya fue cargado en este registro.';
+    }
+
+    if (this.caja.existsOperacionTransferencia(normalized)) {
+      return 'Ese nro de operacion ya existe en otro registro.';
+    }
+
+    return '';
   }
 
   onImporteFocus(event: FocusEvent) {
@@ -328,7 +387,7 @@ export class RegistroDiarioComponent implements OnInit {
   formatPagos(registro: Registro): string {
     if (registro.pagosDetalle?.length) {
       return registro.pagosDetalle
-        .map(p => `${p.medioPago}: ${this.formatCurrency(p.monto)}`)
+        .map(p => `${p.medioPago}: ${this.formatCurrency(p.monto)}${p.nroOperacion ? ` | Op ${p.nroOperacion}` : ''}`)
         .join(' | ');
     }
     return registro.medioPago || 'EFECTIVO';
@@ -344,7 +403,8 @@ export class RegistroDiarioComponent implements OnInit {
   private buildPagoItem(defaultMedio: string) {
     return this.fb.group({
       medioPago: [defaultMedio, Validators.required],
-      monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]]
+      monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
+      nroOperacion: ['']
     });
   }
 
@@ -371,11 +431,14 @@ export class RegistroDiarioComponent implements OnInit {
       .filter(item => item.concepto && item.monto > 0);
   }
 
-  private normalizePagos(list: Array<{ medioPago?: string | null; monto?: number | string | null }>): RegistroPagoDetalle[] {
+  private normalizePagos(list: Array<{ medioPago?: string | null; monto?: number | string | null; nroOperacion?: string | null }>): RegistroPagoDetalle[] {
     return (list || [])
       .map(item => ({
         medioPago: (item.medioPago || '').trim().toUpperCase(),
-        monto: this.parseImporte(item.monto)
+        monto: this.parseImporte(item.monto),
+        nroOperacion: this.isTransferenciaMedio(item.medioPago)
+          ? this.normalizeNroOperacion(item.nroOperacion)
+          : undefined
       }))
       .filter(item => item.medioPago && item.monto > 0);
   }
@@ -386,6 +449,43 @@ export class RegistroDiarioComponent implements OnInit {
 
   private sumPagos(list: RegistroPagoDetalle[]): number {
     return list.reduce((sum, item) => sum + Number(item.monto || 0), 0);
+  }
+
+  private hasPagosTransferenciaInvalidos(): boolean {
+    return this.pagosDetalle.controls.some((_, index) => Boolean(this.getPagoOperacionError(index)));
+  }
+
+  private isOperacionDuplicadaEnFormulario(index: number, nroOperacion: string): boolean {
+    const current = this.normalizeNroOperacion(nroOperacion);
+    if (!current) {
+      return false;
+    }
+
+    return this.pagosDetalle.controls.some((control, controlIndex) => {
+      if (controlIndex === index || !this.isTransferenciaPago(controlIndex)) {
+        return false;
+      }
+
+      return this.normalizeNroOperacion(control.get('nroOperacion')?.value) === current;
+    });
+  }
+
+  private isTransferenciaMedio(value?: string | null): boolean {
+    return /TRANSFER|CBU|CVU/.test(this.normalizeMedio(value || ''));
+  }
+
+  private normalizeNroOperacion(value?: string | null): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '')
+      .replace(/[^A-Z0-9._/-]/gi, '')
+      .trim()
+      .toUpperCase();
+  }
+
+  private isNroOperacionValido(value: string): boolean {
+    return /^[A-Z0-9][A-Z0-9._/-]{5,39}$/.test(value);
   }
 
   private refreshInicioPorMedio() {

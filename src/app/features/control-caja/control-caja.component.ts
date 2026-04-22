@@ -18,10 +18,12 @@ export class ControlCajaComponent implements OnInit {
   inicioEfectivoDia = 0;
   ingresosEfectivoDia = 0;
   gastosEfectivoDia = 0;
-  fechaSeleccionada = this.caja.getTodayDateKey();
+  fechaSeleccionada: string;
   nuevoBilleteValor: number | null = null;
 
-  constructor(private caja: CajaService) {}
+  constructor(private caja: CajaService) {
+    this.fechaSeleccionada = this.caja.getTodayDateKey();
+  }
 
   ngOnInit() {
     const saved = this.caja.getBilletesSnapshot();

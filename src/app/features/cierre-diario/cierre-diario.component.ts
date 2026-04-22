@@ -24,8 +24,8 @@ interface DetalleMedioCierreView {
   styleUrls: ['./cierre-diario.component.css']
 })
 export class CierreDiarioComponent implements OnInit {
-  fechaSeleccionada = this.caja.getTodayDateKey();
-  mesSeleccionado = this.fechaSeleccionada.slice(0, 7);
+  fechaSeleccionada: string;
+  mesSeleccionado: string;
 
   registrosDia: Registro[] = [];
   ingresosDia: IngresoCaja[] = [];
@@ -48,7 +48,10 @@ export class CierreDiarioComponent implements OnInit {
   cierreMensaje = '';
   cantidadCierresDia = 0;
 
-  constructor(private caja: CajaService, private config: ConfigService) {}
+  constructor(private caja: CajaService, private config: ConfigService) {
+    this.fechaSeleccionada = this.caja.getTodayDateKey();
+    this.mesSeleccionado = this.fechaSeleccionada.slice(0, 7);
+  }
 
   ngOnInit() {
     this.syncFechaMesActuales();

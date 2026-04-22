@@ -20,6 +20,7 @@ const regions = [
 
 const password = process.env.SUPABASE_DB_PASSWORD;
 const projectRef = process.env.SUPABASE_PROJECT_REF || 'crjtyrzdrkgrcxqpmmou';
+const targetScript = process.env.SUPABASE_TARGET_SCRIPT || 'scripts/apply-supabase-schema.mjs';
 
 if (!password) {
   console.error('Missing SUPABASE_DB_PASSWORD');
@@ -31,7 +32,7 @@ for (const region of regions) {
   const connectionString = `postgresql://postgres.${projectRef}:${password}@${host}:6543/postgres`;
   console.log(`TRY ${host}`);
 
-  const result = spawnSync(process.execPath, ['scripts/apply-supabase-schema.mjs'], {
+  const result = spawnSync(process.execPath, [targetScript], {
     cwd: process.cwd(),
     env: {
       ...process.env,

@@ -52,6 +52,30 @@
 	justify-content: flex-end;
 }
 
+.danger-zone {
+	display: grid;
+	gap: 0.8rem;
+	padding: 1rem;
+	border: 1px solid #fecaca;
+	border-radius: 0.9rem;
+	background: #fff1f2;
+}
+
+.danger-zone h4 {
+	margin: 0;
+	font-size: 1rem;
+	color: #991b1b;
+}
+
+.danger-zone p {
+	color: #7f1d1d;
+}
+
+.danger-actions {
+	display: flex;
+	justify-content: flex-start;
+}
+
 @media (max-width: 991px) {
 	.config-grid {
 		grid-template-columns: 1fr;

@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { CajaService } from '../../core/services/caja.service';
+import { ConciliacionBancariaService } from '../../core/services/conciliacion-bancaria.service';
 import { ConfigService } from '../../core/services/config.service';
 
 type CatalogoKey = 'conceptos' | 'medios' | 'tiposSalida' | 'tiposIngreso';
@@ -44,7 +46,11 @@ export class ConfiguracionComponent implements OnInit {
     tiposIngreso: ''
   };
 
-  constructor(private cfg: ConfigService) {}
+  borrandoDatos = false;
+  borradoMensaje = '';
+  borradoError = '';
+
+  constructor(private cfg: ConfigService, private caja: CajaService, private conciliacion: ConciliacionBancariaService) {}
 
   ngOnInit() {
     this.conceptos = this.cfg.getConceptos();
@@ -132,6 +138,38 @@ export class ConfiguracionComponent implements OnInit {
     nextList[index] = nextValue;
     this.updateSection(section, nextList);
     this.cancelEdit(section);
+  }
+
+  async borrarTodo() {
+    if (this.borrandoDatos) {
+      return;
+    }
+
+    const confirmacionInicial = window.confirm('Esto borrara todos los datos remotos y locales de la aplicacion. Queres continuar?');
+    if (!confirmacionInicial) {
+      return;
+    }
+
+    const confirmacionFinal = window.confirm('Confirmacion final: se eliminaran registros, ingresos, gastos, cierres, billetes y catalogos. Esta accion es irreversible.');
+    if (!confirmacionFinal) {
+      return;
+    }
+
+    this.borrandoDatos = true;
+    this.borradoMensaje = '';
+    this.borradoError = '';
+
+    try {
+      await this.caja.clearAllData();
+      await this.cfg.clearAllData();
+      await this.conciliacion.clearAllData();
+      this.borradoMensaje = 'Datos eliminados. Se recomienda recargar la app.';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo completar el borrado.';
+      this.borradoError = message;
+    } finally {
+      this.borrandoDatos = false;
+    }
   }
 
   private getList(section: CatalogoKey): string[] {

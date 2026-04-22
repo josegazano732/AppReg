@@ -49,7 +49,7 @@ const payload = {
   pagosDetalle: [
     { medioPago: 'EFECTIVO', monto: 60 },
     { medioPago: 'POSNET', monto: 30 },
-    { medioPago: 'VEP', monto: 10 }
+    { medioPago: 'TRANSFERENCIA', monto: 10, nroOperacion: `TRX${now.getTime()}` }
   ],
   createdAt: now.toISOString()
 };
@@ -73,7 +73,7 @@ try {
   const conceptos = Array.isArray(row.conceptosDetalle) ? row.conceptosDetalle : [];
   const pagos = Array.isArray(row.pagosDetalle) ? row.pagosDetalle : [];
   const posnet = pagos.find(item => item?.medioPago === 'POSNET');
-  const vep = pagos.find(item => item?.medioPago === 'VEP');
+  const transferencia = pagos.find(item => item?.medioPago === 'TRANSFERENCIA');
 
   if (String(row.fecha || '') !== fecha) {
     throw new Error(`Fecha mismatch: expected ${fecha}, got ${row.fecha}`);
@@ -87,8 +87,12 @@ try {
     throw new Error(`Pagos detalle mismatch: expected 3, got ${pagos.length}`);
   }
 
-  if (Number(posnet?.monto || 0) !== 30 || Number(vep?.monto || 0) !== 10) {
-    throw new Error(`Pagos por medio mismatch: POSNET=${posnet?.monto}, VEP=${vep?.monto}`);
+  if (Number(posnet?.monto || 0) !== 30 || Number(transferencia?.monto || 0) !== 10) {
+    throw new Error(`Pagos por medio mismatch: POSNET=${posnet?.monto}, TRANSFERENCIA=${transferencia?.monto}`);
+  }
+
+  if (String(transferencia?.nroOperacion || '') !== `TRX${now.getTime()}`) {
+    throw new Error(`Operacion transferencia mismatch: ${transferencia?.nroOperacion}`);
   }
 
   console.log('REGISTRO_SUPABASE_ROUNDTRIP_OK', {
@@ -98,7 +102,8 @@ try {
     conceptosDetalle: conceptos.length,
     pagosDetalle: pagos.length,
     posnetMonto: posnet?.monto || 0,
-    vepMonto: vep?.monto || 0
+    transferenciaMonto: transferencia?.monto || 0,
+    transferenciaOperacion: transferencia?.nroOperacion || ''
   });
 
   const del = await supabase.from('registros').delete().eq('id', id);

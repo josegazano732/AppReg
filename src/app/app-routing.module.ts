@@ -37,6 +37,16 @@ const routes: Routes = [
         loadComponent: () => import('./features/trazabilidad-caja/trazabilidad-caja.component').then(c => c.TrazabilidadCajaComponent)
       },
       {
+        path: 'movimientos-medios',
+        title: 'Movimientos por Medio | AppReg',
+        loadComponent: () => import('./features/movimientos-medios/movimientos-medios.component').then(c => c.MovimientosMediosComponent)
+      },
+      {
+        path: 'conciliacion-bancaria',
+        title: 'Conciliacion Bancaria | AppReg',
+        loadComponent: () => import('./features/conciliacion-bancaria/conciliacion-bancaria.component').then(c => c.ConciliacionBancariaComponent)
+      },
+      {
         path: 'egresos-caja',
         title: 'Egresos de Caja | AppReg',
         loadComponent: () => import('./features/gastos-diarios/gastos-diarios.component').then(c => c.GastosDiariosComponent)

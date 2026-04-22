@@ -20,6 +20,7 @@ const operations = [
   ['gastos', () => supabase.from('gastos').delete().neq('id', '')],
   ['ingresos', () => supabase.from('ingresos').delete().neq('id', '')],
   ['cierres', () => supabase.from('cierres').delete().neq('id', '')],
+  ['movimientos_bancarios', () => supabase.from('movimientos_bancarios').delete().neq('id', '')],
   ['billetes', () => supabase.from('billetes').delete().gte('valor', 0)]
 ];
 
@@ -31,7 +32,7 @@ for (const [table, action] of operations) {
   }
 }
 
-for (const table of ['registros', 'gastos', 'ingresos', 'cierres', 'billetes']) {
+for (const table of ['registros', 'gastos', 'ingresos', 'cierres', 'movimientos_bancarios', 'billetes']) {
   const { count, error } = await supabase
     .from(table)
     .select('*', { count: 'exact', head: true });
