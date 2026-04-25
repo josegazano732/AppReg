@@ -29,6 +29,10 @@
       <span class="kpi-label">Revisar</span>
       <strong>{{ kpiRevisar }}</strong>
     </article>
+    <article class="kpi-card ok-card">
+      <span class="kpi-label">Procesos cerrados</span>
+      <strong>{{ kpiCerrados }}</strong>
+    </article>
   </div>
 
   <article class="import-block mt-4">
@@ -55,10 +59,10 @@
     <div class="table-head">
       <div>
         <h4>Resultado de conciliacion</h4>
-        <small class="table-head-meta">El match automatico exige coincidencia exacta por operacion, monto e intervalo de fecha de hasta 3 dias.</small>
+        <small class="table-head-meta">El match automatico exige coincidencia exacta por operacion, monto e intervalo de fecha de hasta 3 dias. Cuando confirmas el cruce, puedes cerrar el proceso manualmente y dejarlo auditado.</small>
       </div>
-      <span class="chip" [class.ok]="kpiPendientes === 0 && kpiRevisar === 0" [class.warn]="kpiPendientes > 0 || kpiRevisar > 0">
-        {{ kpiPendientes + kpiRevisar }} caso(s) abiertos
+      <span class="chip" [class.ok]="kpiProcesosAbiertos === 0" [class.warn]="kpiProcesosAbiertos > 0">
+        {{ kpiProcesosAbiertos }} proceso(s) abiertos
       </span>
     </div>
 
@@ -70,6 +74,15 @@
           <option value="PENDIENTE">Pendiente</option>
           <option value="CONCILIADO">Conciliado</option>
           <option value="REVISAR">Revisar</option>
+        </select>
+      </label>
+
+      <label class="form-label mb-0">
+        Proceso
+        <select class="form-select form-select-sm" [(ngModel)]="filtroProceso" (change)="onFiltrosChange()">
+          <option value="TODOS">Todos</option>
+          <option value="ABIERTOS">Abiertos</option>
+          <option value="CERRADOS">Cerrados</option>
         </select>
       </label>
 
@@ -99,6 +112,7 @@
             <th>Nro operacion</th>
             <th class="text-end">Monto</th>
             <th>Estado</th>
+            <th>Proceso</th>
             <th>Origen match</th>
             <th>Registro conciliado</th>
             <th>Motivo</th>
@@ -123,6 +137,14 @@
                 <span class="chip" [class.ok]="item.movimiento.conciliacionEstado === 'CONCILIADO'" [class.warn]="item.movimiento.conciliacionEstado !== 'CONCILIADO'">
                   {{ item.movimiento.conciliacionEstado || 'PENDIENTE' }}
                 </span>
+                <small class="control-note" *ngIf="item.movimiento.conciliadoAt">Conciliado {{ item.movimiento.conciliadoAt | date:'dd/MM/yyyy HH:mm' }}</small>
+              </td>
+              <td>
+                <span class="chip" [class.ok]="isProcesoCerrado(item.movimiento)" [class.warn]="!isProcesoCerrado(item.movimiento)">
+                  {{ isProcesoCerrado(item.movimiento) ? 'CERRADO' : 'ABIERTO' }}
+                </span>
+                <small class="control-note" *ngIf="item.movimiento.conciliacionCerradaAt">Cerrado {{ item.movimiento.conciliacionCerradaAt | date:'dd/MM/yyyy HH:mm' }}</small>
+                <small class="control-note" *ngIf="item.movimiento.conciliacionCerradaObservacion">{{ item.movimiento.conciliacionCerradaObservacion }}</small>
               </td>
               <td>
                 <span *ngIf="item.origenConciliacion" class="chip" [class.ok]="item.origenConciliacion === 'AUTOMATICA'" [class.warn]="item.origenConciliacion === 'MANUAL'">
@@ -143,14 +165,28 @@
               <td class="text-end">
                 <div class="row-actions">
                   <button
-                    *ngIf="(opcionesManuales[item.movimiento.id] || []).length"
+                    *ngIf="(opcionesManuales[item.movimiento.id] || []).length && !isProcesoCerrado(item.movimiento)"
                     type="button"
                     class="btn btn-sm btn-outline-primary"
                     (click)="toggleManualPanel(item.movimiento.id)">
                     {{ panelManualAbierto[item.movimiento.id] ? 'Ocultar' : 'Asistir match' }}
                   </button>
                   <button
-                    *ngIf="item.movimiento.conciliacionEstado === 'CONCILIADO'"
+                    *ngIf="puedeCerrarProceso(item.movimiento)"
+                    type="button"
+                    class="btn btn-sm btn-success"
+                    (click)="cerrarProceso(item.movimiento.id)">
+                    Cerrar proceso
+                  </button>
+                  <button
+                    *ngIf="isProcesoCerrado(item.movimiento)"
+                    type="button"
+                    class="btn btn-sm btn-outline-warning"
+                    (click)="reabrirProceso(item.movimiento.id)">
+                    Reabrir
+                  </button>
+                  <button
+                    *ngIf="item.movimiento.conciliacionEstado === 'CONCILIADO' && !isProcesoCerrado(item.movimiento)"
                     type="button"
                     class="btn btn-sm btn-outline-secondary"
                     (click)="liberarConciliacion(item.movimiento.id)">
@@ -162,7 +198,7 @@
             </tr>
 
             <tr class="manual-row" *ngIf="panelManualAbierto[item.movimiento.id]">
-              <td colspan="8" class="manual-cell">
+              <td colspan="10" class="manual-cell">
                 <div class="manual-panel">
                   <div>
                     <strong>Conciliacion manual asistida</strong>
@@ -187,7 +223,7 @@
           </ng-container>
 
           <tr *ngIf="!resultadosFiltrados.length">
-            <td colspan="9" class="text-center text-secondary py-4">No hay movimientos para el filtro actual.</td>
+            <td colspan="10" class="text-center text-secondary py-4">No hay movimientos para el filtro actual.</td>
           </tr>
         </tbody>
       </table>

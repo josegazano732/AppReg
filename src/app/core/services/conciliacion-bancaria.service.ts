@@ -67,7 +67,7 @@ export class ConciliacionBancariaService {
     this.movimientos$.next(safe);
   }
 
-  importMovimientos(list: Array<Omit<MovimientoBancario, 'id' | 'createdAt' | 'updatedAt' | 'conciliacionEstado' | 'conciliadoRegistroId' | 'conciliadoPagoOrden' | 'conciliadoAt'>>) {
+  importMovimientos(list: Array<Omit<MovimientoBancario, 'id' | 'createdAt' | 'updatedAt' | 'conciliacionEstado' | 'conciliadoRegistroId' | 'conciliadoPagoOrden' | 'conciliadoAt' | 'conciliacionProceso' | 'conciliacionCerradaAt' | 'conciliacionCerradaObservacion'>>) {
     const current = this.getMovimientosSnapshot();
     const imported = (list || []).map(item => {
       const createdAt = new Date().toISOString();
@@ -79,7 +79,10 @@ export class ConciliacionBancariaService {
         conciliacionEstado: 'PENDIENTE' as const,
         conciliadoRegistroId: undefined,
         conciliadoPagoOrden: undefined,
-        conciliadoAt: undefined
+        conciliadoAt: undefined,
+        conciliacionProceso: 'ABIERTO' as const,
+        conciliacionCerradaAt: undefined,
+        conciliacionCerradaObservacion: undefined
       };
     });
 
@@ -115,6 +118,7 @@ export class ConciliacionBancariaService {
         conciliadoRegistroId: candidato.registroId,
         conciliadoPagoOrden: candidato.ordenPago,
         conciliadoAt: now,
+        ...this.buildProcesoAbiertoPatch(),
         updatedAt: now
       };
     });
@@ -136,6 +140,55 @@ export class ConciliacionBancariaService {
         conciliadoRegistroId: undefined,
         conciliadoPagoOrden: undefined,
         conciliadoAt: undefined,
+        ...this.buildProcesoAbiertoPatch(),
+        updatedAt: now
+      };
+    });
+
+    this.updateMovimientos(next);
+    this.conciliarAutomaticamente();
+  }
+
+  cerrarProcesoConciliacion(movimientoId: string, observacion?: string) {
+    const movimiento = this.getMovimientosSnapshot().find(item => item.id === movimientoId);
+    if (!movimiento) {
+      throw new Error('El movimiento ya no existe.');
+    }
+
+    if (movimiento.conciliacionEstado !== 'CONCILIADO' || !movimiento.conciliadoRegistroId || !movimiento.conciliadoPagoOrden) {
+      throw new Error('Solo puedes cerrar procesos de movimientos ya conciliados.');
+    }
+
+    const now = new Date().toISOString();
+    const nota = String(observacion || '').trim() || undefined;
+    const next = this.getMovimientosSnapshot().map(item => {
+      if (item.id !== movimientoId) {
+        return item;
+      }
+
+      return {
+        ...item,
+        conciliacionProceso: 'CERRADO' as const,
+        conciliacionCerradaAt: now,
+        conciliacionCerradaObservacion: nota,
+        updatedAt: now
+      };
+    });
+
+    this.updateMovimientos(next);
+    this.conciliarAutomaticamente();
+  }
+
+  reabrirProcesoConciliacion(movimientoId: string) {
+    const now = new Date().toISOString();
+    const next = this.getMovimientosSnapshot().map(item => {
+      if (item.id !== movimientoId) {
+        return item;
+      }
+
+      return {
+        ...item,
+        ...this.buildProcesoAbiertoPatch(),
         updatedAt: now
       };
     });
@@ -273,7 +326,8 @@ export class ConciliacionBancariaService {
           conciliacionEstado: 'PENDIENTE',
           conciliadoRegistroId: undefined,
           conciliadoPagoOrden: undefined,
-          conciliadoAt: undefined
+          conciliadoAt: undefined,
+          ...this.buildProcesoAbiertoPatch()
         },
         motivo: 'Pendiente'
       };
@@ -295,7 +349,8 @@ export class ConciliacionBancariaService {
           conciliacionEstado: 'CONCILIADO',
           conciliadoRegistroId: candidato.registroId,
           conciliadoPagoOrden: candidato.ordenPago,
-          conciliadoAt: movimiento.conciliadoAt || new Date().toISOString()
+          conciliadoAt: movimiento.conciliadoAt || new Date().toISOString(),
+          ...this.buildProcesoPatchForLink(movimiento, candidato.registroId, candidato.ordenPago)
         },
         candidato,
         motivo: 'Conciliado'
@@ -309,7 +364,8 @@ export class ConciliacionBancariaService {
           conciliacionEstado: 'REVISAR',
           conciliadoRegistroId: undefined,
           conciliadoPagoOrden: undefined,
-          conciliadoAt: undefined
+          conciliadoAt: undefined,
+          ...this.buildProcesoAbiertoPatch()
         },
         motivo: 'Revisar'
       };
@@ -321,7 +377,8 @@ export class ConciliacionBancariaService {
         conciliacionEstado: 'PENDIENTE',
         conciliadoRegistroId: undefined,
         conciliadoPagoOrden: undefined,
-        conciliadoAt: undefined
+        conciliadoAt: undefined,
+        ...this.buildProcesoAbiertoPatch()
       },
       motivo: 'Pendiente'
     };
@@ -352,7 +409,8 @@ export class ConciliacionBancariaService {
           conciliacionEstado: 'REVISAR',
           conciliadoRegistroId: undefined,
           conciliadoPagoOrden: undefined,
-          conciliadoAt: undefined
+          conciliadoAt: undefined,
+          ...this.buildProcesoAbiertoPatch()
         },
         motivo: 'Revisar'
       };
@@ -365,10 +423,39 @@ export class ConciliacionBancariaService {
         conciliacionEstado: 'CONCILIADO',
         conciliadoRegistroId: candidato.registroId,
         conciliadoPagoOrden: candidato.ordenPago,
-        conciliadoAt: movimiento.conciliadoAt || new Date().toISOString()
+        conciliadoAt: movimiento.conciliadoAt || new Date().toISOString(),
+        ...this.buildProcesoPatchForLink(movimiento, candidato.registroId, candidato.ordenPago)
       },
       candidato,
       motivo: 'Conciliado'
+    };
+  }
+
+  private buildProcesoPatchForLink(
+    movimiento: MovimientoBancario,
+    registroId: string,
+    ordenPago: number
+  ): Pick<MovimientoBancario, 'conciliacionProceso' | 'conciliacionCerradaAt' | 'conciliacionCerradaObservacion'> {
+    const sameLink = movimiento.conciliacionEstado === 'CONCILIADO'
+      && movimiento.conciliadoRegistroId === registroId
+      && Number(movimiento.conciliadoPagoOrden || 0) === Number(ordenPago || 0);
+
+    if (sameLink && movimiento.conciliacionProceso === 'CERRADO' && movimiento.conciliacionCerradaAt) {
+      return {
+        conciliacionProceso: 'CERRADO',
+        conciliacionCerradaAt: movimiento.conciliacionCerradaAt,
+        conciliacionCerradaObservacion: movimiento.conciliacionCerradaObservacion
+      };
+    }
+
+    return this.buildProcesoAbiertoPatch();
+  }
+
+  private buildProcesoAbiertoPatch(): Pick<MovimientoBancario, 'conciliacionProceso' | 'conciliacionCerradaAt' | 'conciliacionCerradaObservacion'> {
+    return {
+      conciliacionProceso: 'ABIERTO',
+      conciliacionCerradaAt: undefined,
+      conciliacionCerradaObservacion: undefined
     };
   }
 
@@ -467,25 +554,40 @@ export class ConciliacionBancariaService {
   }
 
   private normalizeMovimientos(list: MovimientoBancario[]): MovimientoBancario[] {
-    return (list || []).map(item => ({
-      ...item,
-      id: item.id || crypto.randomUUID(),
-      fecha: this.normalizeFecha(item.fecha || this.toDateKey(item.createdAt)),
-      createdAt: item.createdAt || new Date().toISOString(),
-      updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
-      banco: String(item.banco || '').trim(),
-      cuenta: String(item.cuenta || '').trim(),
-      descripcion: String(item.descripcion || '').trim() || 'SIN DESCRIPCION',
-      monto: Number(item.monto || 0),
-      tipo: Number(item.monto || 0) < 0 || item.tipo === 'DEBITO' ? 'DEBITO' : 'CREDITO',
-      nroOperacion: this.normalizeOperacion(item.nroOperacion),
-      referenciaExterna: String(item.referenciaExterna || '').trim(),
-      origenImportacion: String(item.origenImportacion || '').trim() || 'MANUAL',
-      conciliacionEstado: this.normalizeEstado(item.conciliacionEstado),
-      conciliadoRegistroId: String(item.conciliadoRegistroId || '').trim() || undefined,
-      conciliadoPagoOrden: Number(item.conciliadoPagoOrden || 0) || undefined,
-      conciliadoAt: item.conciliadoAt || undefined
-    }));
+    return (list || []).map(item => {
+      const conciliacionEstado = this.normalizeEstado(item.conciliacionEstado);
+      const conciliacionCerradaAt = conciliacionEstado === 'CONCILIADO'
+        ? item.conciliacionCerradaAt || undefined
+        : undefined;
+      const conciliacionProceso = conciliacionEstado === 'CONCILIADO'
+        ? this.normalizeProceso(item.conciliacionProceso, conciliacionCerradaAt)
+        : 'ABIERTO';
+
+      return {
+        ...item,
+        id: item.id || crypto.randomUUID(),
+        fecha: this.normalizeFecha(item.fecha || this.toDateKey(item.createdAt)),
+        createdAt: item.createdAt || new Date().toISOString(),
+        updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
+        banco: String(item.banco || '').trim(),
+        cuenta: String(item.cuenta || '').trim(),
+        descripcion: String(item.descripcion || '').trim() || 'SIN DESCRIPCION',
+        monto: Number(item.monto || 0),
+        tipo: Number(item.monto || 0) < 0 || item.tipo === 'DEBITO' ? 'DEBITO' : 'CREDITO',
+        nroOperacion: this.normalizeOperacion(item.nroOperacion),
+        referenciaExterna: String(item.referenciaExterna || '').trim(),
+        origenImportacion: String(item.origenImportacion || '').trim() || 'MANUAL',
+        conciliacionEstado,
+        conciliadoRegistroId: String(item.conciliadoRegistroId || '').trim() || undefined,
+        conciliadoPagoOrden: Number(item.conciliadoPagoOrden || 0) || undefined,
+        conciliadoAt: conciliacionEstado === 'CONCILIADO' ? item.conciliadoAt || undefined : undefined,
+        conciliacionProceso,
+        conciliacionCerradaAt,
+        conciliacionCerradaObservacion: conciliacionProceso === 'CERRADO'
+          ? String(item.conciliacionCerradaObservacion || '').trim() || undefined
+          : undefined
+      };
+    });
   }
 
   private normalizeEstado(value?: string): MovimientoBancario['conciliacionEstado'] {
@@ -494,6 +596,17 @@ export class ConciliacionBancariaService {
     }
 
     return 'PENDIENTE';
+  }
+
+  private normalizeProceso(
+    value?: string,
+    conciliacionCerradaAt?: string
+  ): MovimientoBancario['conciliacionProceso'] {
+    if (value === 'CERRADO' || conciliacionCerradaAt) {
+      return 'CERRADO';
+    }
+
+    return 'ABIERTO';
   }
 
   private normalizeOperacion(value?: string): string {

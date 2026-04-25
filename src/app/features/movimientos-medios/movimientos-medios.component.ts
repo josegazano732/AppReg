@@ -19,7 +19,6 @@ interface MovimientoLineaBase {
 interface MovimientoLinea extends MovimientoLineaBase {
   tipo: 'MOVIMIENTO';
   saldoAcumulado: number;
-  saldoFinalMedio: number;
 }
 
 interface CierreLinea {
@@ -52,8 +51,6 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
   lineas: TimelineRow[] = [];
   movimientos: MovimientoLinea[] = [];
   totalLineas = 0;
-  totalIngresos = 0;
-  totalEgresos = 0;
   totalNeto = 0;
 
   private readonly destroy$ = new Subject<void>();
@@ -124,8 +121,6 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
     this.movimientos = lineasVisibles.filter(this.isMovimiento);
     this.lineas = this.ordenSeleccionado === 'DESC' ? [...lineasVisibles].reverse() : lineasVisibles;
     this.totalLineas = this.movimientos.length;
-    this.totalIngresos = this.movimientos.filter(item => item.monto > 0).reduce((sum, item) => sum + item.monto, 0);
-    this.totalEgresos = this.movimientos.filter(item => item.monto < 0).reduce((sum, item) => sum + Math.abs(item.monto), 0);
     this.totalNeto = this.movimientos.reduce((sum, item) => sum + item.monto, 0);
   }
 
@@ -220,7 +215,6 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
 
     timelineAsc.forEach(item => {
       if (this.isCierre(item)) {
-        this.applyCierreSnapshot(saldoPorMedio, item.cierre);
         resultado.push(item);
         return;
       }
@@ -232,22 +226,11 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
       resultado.push({
         ...item,
         tipo: 'MOVIMIENTO',
-        saldoAcumulado: saldoActual,
-        saldoFinalMedio: 0
+        saldoAcumulado: saldoActual
       });
     });
 
-    const saldoFinalPorMedio = new Map<string, number>(saldoPorMedio);
-    return resultado.map(item => {
-      if (!this.isMovimiento(item)) {
-        return item;
-      }
-
-      return {
-        ...item,
-        saldoFinalMedio: Number(saldoFinalPorMedio.get(item.medioPago) || 0)
-      };
-    });
+    return resultado;
   }
 
   private buildRegistroDetalle(registro: Registro, ordenPago: number): string {
@@ -262,39 +245,6 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
   private buildCierreDetalle(cierre: CierreCaja): string {
     const observacion = this.normalizeText(cierre.observacion);
     return `Cierre de caja | Neto ${this.formatCurrency(cierre.totalNeto)} | Obs. ${observacion}`;
-  }
-
-  private buildSaldoSnapshotDesdeCierre(cierre: CierreCaja): Record<string, number> {
-    const saldo: Record<string, number> = {
-      EFECTIVO: Number(cierre.disponibleContinuidad || 0),
-      CHEQUES: Number(cierre.saldo.cheques || 0),
-      POSNET: Number(cierre.saldo.posnet || 0),
-      DEPOSITO: Number(cierre.saldo.deposito || 0)
-    };
-
-    (cierre.detalleMedios || []).forEach(item => {
-      const key = this.normalizeMedio(item.medioPago);
-      if (!key || key === 'EFECTIVO') {
-        return;
-      }
-
-      saldo[key] = Number(item.saldo || 0);
-    });
-
-    return saldo;
-  }
-
-  private applyCierreSnapshot(saldoPorMedio: Map<string, number>, cierre: CierreCaja) {
-    const snapshot = this.buildSaldoSnapshotDesdeCierre(cierre);
-    saldoPorMedio.set('EFECTIVO', Number(snapshot.EFECTIVO || 0));
-
-    Object.entries(snapshot).forEach(([medio, saldo]) => {
-      if (medio === 'EFECTIVO' || saldoPorMedio.has(medio)) {
-        return;
-      }
-
-      saldoPorMedio.set(medio, Number(saldo || 0));
-    });
   }
 
   private isWithinRange(fecha: string): boolean {

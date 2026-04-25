@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { auditTime, merge } from 'rxjs';
 import { ConciliacionBancariaService, OpcionConciliacionManual, ResultadoConciliacionBancaria } from '../../core/services/conciliacion-bancaria.service';
 import { CajaService } from '../../core/services/caja.service';
+import { MovimientoBancario } from '../../shared/models/finance.model';
 
 @Component({
   selector: 'app-conciliacion-bancaria',
@@ -22,12 +23,15 @@ export class ConciliacionBancariaComponent implements OnInit {
   seleccionManual: Record<string, string> = {};
   panelManualAbierto: Record<string, boolean> = {};
   filtroEstado: 'TODOS' | 'PENDIENTE' | 'CONCILIADO' | 'REVISAR' = 'TODOS';
+  filtroProceso: 'TODOS' | 'ABIERTOS' | 'CERRADOS' = 'TODOS';
   busquedaOperacion = '';
 
   kpiTotal = 0;
   kpiPendientes = 0;
   kpiConciliados = 0;
   kpiRevisar = 0;
+  kpiCerrados = 0;
+  kpiProcesosAbiertos = 0;
 
   constructor(private conciliacion: ConciliacionBancariaService, private caja: CajaService) {}
 
@@ -110,6 +114,25 @@ export class ConciliacionBancariaComponent implements OnInit {
     this.refresh();
   }
 
+  cerrarProceso(movimientoId: string) {
+    try {
+      this.conciliacion.cerrarProcesoConciliacion(movimientoId);
+      this.importMessage = 'Proceso marcado como conciliado y cerrado.';
+      this.importError = '';
+      this.refresh();
+    } catch (error) {
+      this.importError = error instanceof Error ? error.message : 'No se pudo cerrar el proceso.';
+      this.importMessage = '';
+    }
+  }
+
+  reabrirProceso(movimientoId: string) {
+    this.conciliacion.reabrirProcesoConciliacion(movimientoId);
+    this.importMessage = 'Proceso reabierto para nueva revision.';
+    this.importError = '';
+    this.refresh();
+  }
+
   buildManualValue(option?: OpcionConciliacionManual): string {
     if (!option) {
       return '';
@@ -122,12 +145,21 @@ export class ConciliacionBancariaComponent implements OnInit {
     return item.movimiento.id;
   }
 
+  isProcesoCerrado(movimiento: MovimientoBancario): boolean {
+    return movimiento.conciliacionProceso === 'CERRADO' && Boolean(movimiento.conciliacionCerradaAt);
+  }
+
+  puedeCerrarProceso(movimiento: MovimientoBancario): boolean {
+    return movimiento.conciliacionEstado === 'CONCILIADO' && !this.isProcesoCerrado(movimiento);
+  }
+
   onFiltrosChange() {
     this.applyFiltros();
   }
 
   limpiarFiltros() {
     this.filtroEstado = 'TODOS';
+    this.filtroProceso = 'TODOS';
     this.busquedaOperacion = '';
     this.applyFiltros();
   }
@@ -153,6 +185,8 @@ export class ConciliacionBancariaComponent implements OnInit {
     this.kpiPendientes = this.resultados.filter(item => item.movimiento.conciliacionEstado === 'PENDIENTE').length;
     this.kpiConciliados = this.resultados.filter(item => item.movimiento.conciliacionEstado === 'CONCILIADO').length;
     this.kpiRevisar = this.resultados.filter(item => item.movimiento.conciliacionEstado === 'REVISAR').length;
+    this.kpiCerrados = this.resultados.filter(item => this.isProcesoCerrado(item.movimiento)).length;
+    this.kpiProcesosAbiertos = this.resultados.filter(item => !this.isProcesoCerrado(item.movimiento)).length;
   }
 
   private applyFiltros() {
@@ -160,10 +194,14 @@ export class ConciliacionBancariaComponent implements OnInit {
     this.resultadosFiltrados = this.resultados.filter(item => {
       const estado = item.movimiento.conciliacionEstado || 'PENDIENTE';
       const estadoOk = this.filtroEstado === 'TODOS' || estado === this.filtroEstado;
+      const procesoCerrado = this.isProcesoCerrado(item.movimiento);
+      const procesoOk = this.filtroProceso === 'TODOS'
+        || (this.filtroProceso === 'CERRADOS' && procesoCerrado)
+        || (this.filtroProceso === 'ABIERTOS' && !procesoCerrado);
       const operacion = this.normalizeOperacion(item.movimiento.nroOperacion || '');
       const descripcion = this.normalizeOperacion(item.movimiento.descripcion || '');
       const busquedaOk = !busqueda || operacion.includes(busqueda) || descripcion.includes(busqueda);
-      return estadoOk && busquedaOk;
+      return estadoOk && procesoOk && busquedaOk;
     });
   }
 

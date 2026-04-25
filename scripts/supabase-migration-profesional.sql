@@ -116,13 +116,20 @@ create table if not exists public.movimientos_bancarios (
 	conciliado_registro_id text,
 	conciliado_pago_orden integer,
 	conciliado_at timestamptz,
+	conciliacion_proceso text not null default 'ABIERTO',
+	conciliacion_cerrada_at timestamptz,
+	conciliacion_cerrada_observacion text,
 	constraint chk_movimientos_bancarios_tipo check (tipo in ('CREDITO', 'DEBITO')),
 	constraint chk_movimientos_bancarios_estado check (conciliacion_estado in ('PENDIENTE', 'CONCILIADO', 'REVISAR')),
+	constraint chk_movimientos_bancarios_proceso check (conciliacion_proceso in ('ABIERTO', 'CERRADO')),
 	constraint fk_movimientos_bancarios_registro
 		foreign key (conciliado_registro_id) references public.registros(id) on update cascade on delete set null
 );
 
 alter table public.movimientos_bancarios add column if not exists "updatedAt" timestamptz not null default now();
+alter table public.movimientos_bancarios add column if not exists conciliacion_proceso text not null default 'ABIERTO';
+alter table public.movimientos_bancarios add column if not exists conciliacion_cerrada_at timestamptz;
+alter table public.movimientos_bancarios add column if not exists conciliacion_cerrada_observacion text;
 
 create table if not exists public.config_conceptos (
 	id bigserial primary key,
@@ -173,6 +180,12 @@ $$;
 
 do $$
 begin
+	if not exists (select 1 from pg_constraint where conname = 'chk_movimientos_bancarios_proceso') then
+		alter table public.movimientos_bancarios
+			add constraint chk_movimientos_bancarios_proceso
+			check (conciliacion_proceso in ('ABIERTO', 'CERRADO'));
+	end if;
+
 	if not exists (select 1 from pg_trigger where tgname = 'trg_registros_updated_at') then
 		create trigger trg_registros_updated_at
 		before update on public.registros

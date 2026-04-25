@@ -40,25 +40,6 @@
     </div>
   </div>
 
-  <div class="kpi-grid mt-4">
-    <article class="kpi-card">
-      <span class="kpi-label">Lineas</span>
-      <strong>{{ totalLineas }}</strong>
-    </article>
-    <article class="kpi-card positive">
-      <span class="kpi-label">Ingresos</span>
-      <strong>{{ totalIngresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
-    </article>
-    <article class="kpi-card negative">
-      <span class="kpi-label">Egresos</span>
-      <strong>{{ totalEgresos | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
-    </article>
-    <article class="kpi-card" [class.positive]="totalNeto >= 0" [class.negative]="totalNeto < 0">
-      <span class="kpi-label">Neto</span>
-      <strong>{{ totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</strong>
-    </article>
-  </div>
-
   <ng-container *ngIf="lineas.length; else emptyState">
     <article class="table-block mt-4">
       <div class="table-head">
@@ -88,7 +69,6 @@
               <th class="text-end">Ingreso</th>
               <th class="text-end">Egreso</th>
               <th class="text-end">Saldo acumulado</th>
-              <th class="text-end">Saldo final medio</th>
             </tr>
           </thead>
           <tbody>
@@ -117,14 +97,11 @@
                 <td class="text-end" [class.text-emerald]="item.saldoAcumulado >= 0" [class.text-danger]="item.saldoAcumulado < 0">
                   {{ item.saldoAcumulado | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
                 </td>
-                <td class="text-end" [class.text-emerald]="item.saldoFinalMedio >= 0" [class.text-danger]="item.saldoFinalMedio < 0">
-                  {{ item.saldoFinalMedio | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
-                </td>
               </tr>
 
               <ng-template #cierreRow>
                 <tr class="cierre-row">
-                  <td colspan="10" class="cierre-cell">
+                  <td colspan="9" class="cierre-cell">
                     <div class="cierre-divider">
                       <span class="cierre-line"></span>
                       <div class="cierre-content">

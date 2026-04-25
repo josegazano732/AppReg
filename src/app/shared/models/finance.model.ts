@@ -141,6 +141,9 @@ export interface MovimientoBancario {
   conciliadoRegistroId?: string;
   conciliadoPagoOrden?: number;
   conciliadoAt?: string;
+  conciliacionProceso?: 'ABIERTO' | 'CERRADO';
+  conciliacionCerradaAt?: string;
+  conciliacionCerradaObservacion?: string;
 }
 
 export interface ConfiguracionCaja {
