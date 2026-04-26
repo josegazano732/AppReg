@@ -508,10 +508,12 @@ export class ConciliacionBancariaService {
     const exactMonto = Math.abs(Number(candidato.monto || 0) - Number(movimiento.monto || 0)) <= 0.009;
     const diffDias = this.daysDiff(candidato.fecha, movimiento.fecha);
 
-    if (exactOperacion) {
-      priority += 100;
-      reasons.push('misma operacion');
+    if (!exactOperacion) {
+      return null;
     }
+
+    priority += 100;
+    reasons.push('misma operacion');
 
     if (exactMonto) {
       priority += 40;

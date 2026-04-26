@@ -107,8 +107,41 @@
   <section class="danger-zone mt-4">
     <div>
       <h4>Zona temporal de mantenimiento</h4>
-      <p class="mb-0">Boton provisorio para vaciar la base remota y limpiar el estado local. Despues se puede ocultar o quitar.</p>
+      <p class="mb-0">Botones provisorios para limpieza operativa. La Configuracion del sistema se conserva.</p>
     </div>
+
+    <div class="temporary-actions">
+      <div>
+        <h5>Demo visible de conciliacion</h5>
+        <p class="mb-0">Carga 5 registros y 7 movimientos bancarios de ejemplo para ver CONCILIADO, REVISAR y PENDIENTE en pantalla real.</p>
+      </div>
+
+      <div class="temporary-buttons">
+        <button class="btn btn-primary" type="button" (click)="cargarDemoConciliacion()" [disabled]="cargandoDemoConciliacion">
+          {{ cargandoDemoConciliacion ? 'Cargando demo...' : 'Cargar demo y abrir conciliacion' }}
+        </button>
+        <button class="btn btn-outline-danger" type="button" (click)="limpiarDemoConciliacion()" [disabled]="limpiandoDemoConciliacion">
+          {{ limpiandoDemoConciliacion ? 'Limpiando demo...' : 'Limpiar demo visible' }}
+        </button>
+      </div>
+    </div>
+
+    <small class="text-success" *ngIf="demoConciliacionMensaje">{{ demoConciliacionMensaje }}</small>
+    <small class="text-danger" *ngIf="demoConciliacionError">{{ demoConciliacionError }}</small>
+
+    <div class="temporary-actions">
+      <div>
+        <h5>Escenario QA temporal</h5>
+        <p class="mb-0">Elimina solo los 20 movimientos de prueba cargados con el prefijo QA del dia actual.</p>
+      </div>
+
+      <button class="btn btn-outline-danger" type="button" (click)="limpiarEscenarioTemporal()" [disabled]="limpiandoEscenarioTemporal">
+        {{ limpiandoEscenarioTemporal ? 'Limpiando escenario...' : 'Limpiar escenario QA de hoy' }}
+      </button>
+    </div>
+
+    <small class="text-success" *ngIf="limpiezaEscenarioMensaje">{{ limpiezaEscenarioMensaje }}</small>
+    <small class="text-danger" *ngIf="limpiezaEscenarioError">{{ limpiezaEscenarioError }}</small>
 
     <div class="danger-actions">
       <button class="btn btn-danger" type="button" (click)="borrarTodo()" [disabled]="borrandoDatos">

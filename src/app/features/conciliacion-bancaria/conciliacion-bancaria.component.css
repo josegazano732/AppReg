@@ -102,6 +102,34 @@
   padding: 1rem;
 }
 
+.import-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.import-file-meta {
+  padding: 0.7rem 0.85rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.8rem;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.85rem;
+}
+
 .filters-bar {
   display: grid;
   grid-template-columns: 180px 180px minmax(220px, 1fr) auto;
@@ -186,6 +214,11 @@
 @media (max-width: 1080px) {
   .head-wrap {
     flex-direction: column;
+  }
+
+  .table-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .kpi-grid {

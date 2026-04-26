@@ -39,16 +39,25 @@
     <div class="table-head">
       <div>
         <h4>Importacion rapida</h4>
-        <small class="table-head-meta">Cabecera sugerida: fecha;descripcion;monto;nroOperacion;banco;cuenta;referenciaExterna;tipo</small>
+        <small class="table-head-meta">Sube PDF, CSV o TXT. Para PDF se genera una vista previa editable antes de importar. Cabecera sugerida: fecha;descripcion;monto;nroOperacion;banco;cuenta;referenciaExterna;tipo</small>
       </div>
-      <button type="button" class="btn btn-primary btn-sm" (click)="importarTexto()">Importar texto</button>
+      <div class="import-actions">
+        <label class="btn btn-outline-secondary btn-sm file-button mb-0">
+          {{ processingImportFile ? 'Procesando archivo...' : 'Cargar archivo' }}
+          <input type="file" accept=".pdf,.csv,.txt" (change)="importarArchivo($event)" [disabled]="processingImportFile">
+        </label>
+        <button type="button" class="btn btn-primary btn-sm" (click)="importarTexto()" [disabled]="processingImportFile">Importar texto</button>
+      </div>
     </div>
 
     <div class="import-body">
+      <div class="import-file-meta" *ngIf="importFileName">
+        <strong>Archivo cargado:</strong> {{ importFileName }}
+      </div>
       <textarea
         class="form-control import-textarea"
         [(ngModel)]="importText"
-        placeholder="Pega aqui el CSV o extracto delimitado por ; , tab o |"
+        placeholder="Pega aqui el CSV, el extracto delimitado o la vista previa generada desde el PDF"
       ></textarea>
       <small class="text-success" *ngIf="importMessage">{{ importMessage }}</small>
       <small class="text-danger" *ngIf="importError">{{ importError }}</small>
@@ -156,6 +165,7 @@
                 <ng-container *ngIf="item.candidato; else sinMatch">
                   <strong>{{ item.candidato.nroRecibo || item.candidato.registroId }}</strong>
                   <small class="control-note">{{ item.candidato.nombre }} | {{ item.candidato.fecha | date:'dd/MM/yyyy' }} | Pago {{ item.candidato.ordenPago }}</small>
+                  <small class="control-note">Transferencia a Macro: {{ item.candidato.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</small>
                 </ng-container>
                 <ng-template #sinMatch>
                   <span class="text-secondary">Sin match aplicado</span>
@@ -202,13 +212,13 @@
                 <div class="manual-panel">
                   <div>
                     <strong>Conciliacion manual asistida</strong>
-                    <small class="control-note">Se muestran candidatos por coincidencia de operacion, monto y cercania de fecha.</small>
+                    <small class="control-note">Se muestran solo candidatos con la misma operacion; luego se priorizan por monto y cercania de fecha.</small>
                   </div>
 
                   <div class="manual-controls" *ngIf="(opcionesManuales[item.movimiento.id] || []).length; else noOptions">
                     <select class="form-select form-select-sm" [(ngModel)]="seleccionManual[item.movimiento.id]">
                       <option *ngFor="let option of opcionesManuales[item.movimiento.id]" [ngValue]="buildManualValue(option)">
-                        {{ option.nroRecibo || option.registroId }} | {{ option.nombre }} | {{ option.fecha | date:'dd/MM/yyyy' }} | ${{ option.monto }} | {{ option.motivoManual }}
+                        {{ option.nroRecibo || option.registroId }} | {{ option.nombre }} | {{ option.fecha | date:'dd/MM/yyyy' }} | Transferencia a Macro: {{ option.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }} | {{ option.motivoManual }}
                       </option>
                     </select>
                     <button type="button" class="btn btn-sm btn-primary" (click)="aplicarConciliacionManual(item.movimiento.id)">Aplicar</button>

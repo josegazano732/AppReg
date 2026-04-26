@@ -7,6 +7,7 @@ export interface RegistroPagoDetalle {
   medioPago: string;
   monto: number;
   nroOperacion?: string;
+  fechaTransferencia?: string;
 }
 
 export interface Registro {

@@ -76,8 +76,46 @@
 	justify-content: flex-start;
 }
 
+.temporary-actions {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.9rem 1rem;
+	border: 1px dashed #fda4af;
+	border-radius: 0.75rem;
+	background: rgba(255, 255, 255, 0.55);
+}
+
+.temporary-buttons {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.temporary-actions h5 {
+	margin: 0 0 0.25rem;
+	font-size: 0.96rem;
+	color: #881337;
+}
+
+.temporary-actions p {
+	color: #9f1239;
+}
+
 @media (max-width: 991px) {
 	.config-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.temporary-actions {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.temporary-buttons {
+		justify-content: flex-start;
 	}
 }

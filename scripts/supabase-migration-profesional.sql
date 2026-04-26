@@ -371,6 +371,7 @@ create table if not exists public.registro_pagos_detalle (
 	medio_pago text not null,
 	monto numeric not null default 0,
 	nro_operacion text,
+	fecha_transferencia date,
 	medio_pago_id bigint,
 	"createdAt" timestamptz not null default now(),
 	primary key (registro_id, orden),
@@ -381,6 +382,7 @@ create table if not exists public.registro_pagos_detalle (
 );
 
 alter table public.registro_pagos_detalle add column if not exists nro_operacion text;
+alter table public.registro_pagos_detalle add column if not exists fecha_transferencia date;
 
 insert into public.registro_conceptos_detalle (registro_id, orden, concepto, monto, concepto_id)
 select
@@ -416,13 +418,18 @@ set concepto = excluded.concepto,
 	monto = excluded.monto,
 	concepto_id = excluded.concepto_id;
 
-insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
+insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, fecha_transferencia, medio_pago_id)
 select
 	r.id,
 	detalle.ord::int,
 	upper(trim(coalesce(detalle.value->>'medioPago', ''))),
 	coalesce((detalle.value->>'monto')::numeric, 0),
 	nullif(upper(regexp_replace(trim(coalesce(detalle.value->>'nroOperacion', '')), '\s+', '', 'g')), ''),
+	case
+		when coalesce(detalle.value->>'fechaTransferencia', '') ~ '^\d{4}-\d{2}-\d{2}$'
+			then (detalle.value->>'fechaTransferencia')::date
+		else null
+	end,
 	m.id
 from public.registros r
 join lateral jsonb_array_elements(coalesce(r."pagosDetalle", '[]'::jsonb)) with ordinality detalle(value, ord) on true
@@ -433,14 +440,16 @@ on conflict (registro_id, orden) do update
 set medio_pago = excluded.medio_pago,
 	monto = excluded.monto,
 	nro_operacion = excluded.nro_operacion,
+	fecha_transferencia = excluded.fecha_transferencia,
 	medio_pago_id = excluded.medio_pago_id;
 
-insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, medio_pago_id)
+insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, fecha_transferencia, medio_pago_id)
 select
 	r.id,
 	1,
 	upper(trim(coalesce(r."medioPago", ''))),
 	coalesce(r.subtotal, 0),
+	null,
 	null,
 	m.id
 from public.registros r
@@ -452,6 +461,7 @@ on conflict (registro_id, orden) do update
 set medio_pago = excluded.medio_pago,
 	monto = excluded.monto,
 	nro_operacion = excluded.nro_operacion,
+	fecha_transferencia = excluded.fecha_transferencia,
 	medio_pago_id = excluded.medio_pago_id;
 
 create table if not exists public.cierre_registros (

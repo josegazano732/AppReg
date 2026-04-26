@@ -6,6 +6,18 @@ import { ConciliacionBancariaService, OpcionConciliacionManual, ResultadoConcili
 import { CajaService } from '../../core/services/caja.service';
 import { MovimientoBancario } from '../../shared/models/finance.model';
 
+type MovimientoImportado = {
+  fecha: string;
+  descripcion: string;
+  monto: number;
+  tipo: 'CREDITO' | 'DEBITO';
+  nroOperacion?: string;
+  banco?: string;
+  cuenta?: string;
+  referenciaExterna?: string;
+  origenImportacion?: string;
+};
+
 @Component({
   selector: 'app-conciliacion-bancaria',
   standalone: true,
@@ -17,6 +29,8 @@ export class ConciliacionBancariaComponent implements OnInit {
   importText = '';
   importError = '';
   importMessage = '';
+  importFileName = '';
+  processingImportFile = false;
   resultados: ResultadoConciliacionBancaria[] = [];
   resultadosFiltrados: ResultadoConciliacionBancaria[] = [];
   opcionesManuales: Record<string, OpcionConciliacionManual[]> = {};
@@ -60,8 +74,50 @@ export class ConciliacionBancariaComponent implements OnInit {
       this.conciliacion.importMovimientos(rows);
       this.importMessage = `${rows.length} movimiento(s) importado(s) y conciliados automaticamente.`;
       this.importText = '';
+      this.importFileName = '';
     } catch (error) {
       this.importError = error instanceof Error ? error.message : 'No se pudo importar el texto.';
+    }
+  }
+
+  async importarArchivo(event: Event) {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    this.importError = '';
+    this.importMessage = '';
+    this.importFileName = file.name;
+    this.processingImportFile = true;
+
+    try {
+      const lowerName = file.name.toLowerCase();
+
+      if (lowerName.endsWith('.pdf')) {
+        const extractedText = await this.extractTextFromPdf(file);
+        const movimientos = this.parseImportText(extractedText);
+
+        if (!movimientos.length) {
+          this.importText = extractedText;
+          throw new Error('No pude identificar movimientos confiables dentro del PDF. Te deje el texto extraido en la caja para que lo ajustes o lo pegues en formato tabulado.');
+        }
+
+        this.importText = this.buildImportPreview(movimientos);
+        this.importMessage = `PDF procesado. Se detectaron ${movimientos.length} movimiento(s). Revisa la vista previa y confirma con Importar texto.`;
+      } else {
+        const rawText = await file.text();
+        this.importText = rawText;
+        this.importMessage = 'Archivo cargado. Revisa el contenido y confirma con Importar texto.';
+      }
+    } catch (error) {
+      this.importError = error instanceof Error ? error.message : 'No se pudo procesar el archivo.';
+    } finally {
+      this.processingImportFile = false;
+      if (input) {
+        input.value = '';
+      }
     }
   }
 
@@ -205,11 +261,20 @@ export class ConciliacionBancariaComponent implements OnInit {
     });
   }
 
-  private parseImportText(raw: string): Array<{ fecha: string; descripcion: string; monto: number; tipo: 'CREDITO' | 'DEBITO'; nroOperacion?: string; banco?: string; cuenta?: string; referenciaExterna?: string; origenImportacion?: string }> {
+  private parseImportText(raw: string): MovimientoImportado[] {
     const text = String(raw || '').trim();
     if (!text) {
       return [];
     }
+
+    if (this.looksLikeDelimitedImport(text)) {
+      return this.parseDelimitedImportText(text);
+    }
+
+    return this.parsePdfStatementText(text);
+  }
+
+  private parseDelimitedImportText(text: string): MovimientoImportado[] {
 
     const rows = this.parseCsv(text);
     if (rows.length < 2) {
@@ -232,6 +297,181 @@ export class ConciliacionBancariaComponent implements OnInit {
       referenciaExterna: item.referenciaExterna,
       origenImportacion: 'IMPORTACION_TXT'
     }));
+  }
+
+  private parsePdfStatementText(text: string): MovimientoImportado[] {
+    if (this.looksLikeAccountStatement(text)) {
+      const accountRows = this.parseAccountStatementText(text);
+      if (accountRows.length) {
+        return accountRows.map(item => ({
+          ...item,
+          origenImportacion: 'IMPORTACION_PDF'
+        }));
+      }
+    }
+
+    const blocks = this.buildPdfStatementBlocks(text);
+    const parsed = blocks
+      .map(block => this.parsePdfStatementBlock(block))
+      .filter((item): item is MovimientoImportado => Boolean(item));
+
+    return parsed.map(item => ({
+      ...item,
+      origenImportacion: 'IMPORTACION_PDF'
+    }));
+  }
+
+  private looksLikeAccountStatement(text: string): boolean {
+    const normalized = this.normalizeOperacion(text);
+    return normalized.includes('ULTIMOSMOVIMIENTOSDE')
+      && normalized.includes('FECHADESCRIPCIONIMPORTESALDO');
+  }
+
+  private parseAccountStatementText(text: string): MovimientoImportado[] {
+    const lines = String(text || '')
+      .split(/\r?\n/)
+      .map(line => this.normalizePdfLine(line))
+      .filter(line => line && !this.isAccountStatementNoiseLine(line));
+
+    const dateIndexes = lines
+      .map((line, index) => this.startsWithStatementDate(line) ? index : -1)
+      .filter(index => index >= 0);
+
+    return dateIndexes
+      .map((lineIndex, position) => {
+        const previousDateIndex = position > 0 ? dateIndexes[position - 1] : -1;
+        const nextDateIndex = position < dateIndexes.length - 1 ? dateIndexes[position + 1] : lines.length;
+        const previousLines = lines.slice(previousDateIndex + 1, lineIndex);
+        const nextLines = lines.slice(lineIndex + 1, nextDateIndex);
+        return this.parseAccountStatementRow(lines[lineIndex], previousLines, nextLines);
+      })
+      .filter((item): item is MovimientoImportado => Boolean(item));
+  }
+
+  private parseAccountStatementRow(currentLine: string, previousLines: string[], nextLines: string[]): MovimientoImportado | null {
+    const match = currentLine.match(/^(\d{2}[/-]\d{2}[/-]\d{4})\s+(\d+)\s*(.*)$/);
+    if (!match) {
+      return null;
+    }
+
+    const [, rawFecha, transactionId, currentRest] = match;
+    const fecha = this.normalizeFecha(rawFecha);
+    if (!fecha) {
+      return null;
+    }
+
+    const previousRelevant = previousLines.filter(line => !this.isAccountStatementIgnorableContext(line)).slice(-2);
+    const nextRelevant = nextLines.filter(line => !this.isAccountStatementIgnorableContext(line)).slice(0, 2);
+    const amountFromPrevious = [...previousRelevant].reverse().find(line => this.isStandaloneAmountLine(line));
+    const currentAmounts = this.extractAmountTokens(currentRest);
+    const previousAmountCarrier = [...previousRelevant].reverse().find(line => !this.isStandaloneAmountLine(line) && this.extractAmountTokens(line).length);
+
+    let amountToken = amountFromPrevious;
+    if (!amountToken) {
+      if (currentAmounts.length >= 1) {
+        amountToken = currentAmounts[0];
+      } else if (previousAmountCarrier) {
+        amountToken = this.extractAmountTokens(previousAmountCarrier)[0];
+      } else {
+        const nextAmountCarrier = nextRelevant.find(line => this.extractAmountTokens(line).length);
+        amountToken = nextAmountCarrier ? this.extractAmountTokens(nextAmountCarrier)[0] : undefined;
+      }
+    }
+
+    if (!amountToken) {
+      return null;
+    }
+
+    const monto = this.parseAmount(amountToken);
+    if (!Number.isFinite(monto)) {
+      return null;
+    }
+
+    const descriptionParts = [
+      ...previousRelevant.filter(line => !this.isStandaloneAmountLine(line) && !this.isMostlyNumericLine(line)),
+      currentRest,
+      ...nextRelevant.filter(line => !this.isStandaloneAmountLine(line) && !this.isMostlyNumericLine(line))
+    ];
+    const descripcion = this.cleanAccountStatementDescription(descriptionParts.join(' '), transactionId, amountToken);
+
+    return {
+      fecha,
+      descripcion: descripcion || 'SIN DESCRIPCION',
+      monto: Math.abs(monto),
+      tipo: this.detectStatementTipo(descriptionParts.join(' '), amountToken),
+      nroOperacion: transactionId,
+      referenciaExterna: this.extractExternalReference(descriptionParts.join(' ')) || transactionId
+    };
+  }
+
+  private buildPdfStatementBlocks(text: string): string[] {
+    const lines = String(text || '')
+      .split(/\r?\n/)
+      .map(line => this.normalizePdfLine(line))
+      .filter(line => line && !this.isPdfNoiseLine(line));
+
+    const blocks: string[] = [];
+    let current = '';
+
+    lines.forEach(line => {
+      if (this.startsWithStatementDate(line)) {
+        if (current) {
+          blocks.push(current);
+        }
+        current = line;
+        return;
+      }
+
+      if (current) {
+        current = `${current} ${line}`.trim();
+      }
+    });
+
+    if (current) {
+      blocks.push(current);
+    }
+
+    return blocks;
+  }
+
+  private parsePdfStatementBlock(block: string): MovimientoImportado | null {
+    const match = block.match(/^(\d{2}[/-]\d{2}[/-]\d{4})(?:\s+\d{2}[/-]\d{2}[/-]\d{4})?\s+(.*)$/);
+    if (!match) {
+      return null;
+    }
+
+    const [, rawFecha, rawBody] = match;
+    const fecha = this.normalizeFecha(rawFecha);
+    const body = String(rawBody || '').trim();
+    if (!fecha || !body) {
+      return null;
+    }
+
+    const amountToken = this.pickStatementAmountToken(body);
+    if (!amountToken) {
+      return null;
+    }
+
+    const amountValue = this.parseAmount(amountToken.value);
+    if (!Number.isFinite(amountValue)) {
+      return null;
+    }
+
+    const bodyWithoutAmount = `${body.slice(0, amountToken.index)} ${body.slice(amountToken.index + amountToken.value.length)}`
+      .replace(/\s+/g, ' ')
+      .trim();
+    const nroOperacion = this.extractOperacionFromStatement(bodyWithoutAmount);
+    const descripcion = this.cleanStatementDescription(bodyWithoutAmount, nroOperacion);
+    const tipo = this.detectStatementTipo(body, amountToken.value);
+
+    return {
+      fecha,
+      descripcion: descripcion || 'SIN DESCRIPCION',
+      monto: Math.abs(amountValue),
+      tipo,
+      nroOperacion,
+      referenciaExterna: nroOperacion
+    };
   }
 
   private mapRow(headers: string[], row: string[]): { fecha: string; descripcion: string; monto: number; tipo: 'CREDITO' | 'DEBITO'; nroOperacion?: string; banco?: string; cuenta?: string; referenciaExterna?: string } {
@@ -330,6 +570,211 @@ export class ConciliacionBancariaComponent implements OnInit {
     });
 
     return best;
+  }
+
+  private looksLikeDelimitedImport(text: string): boolean {
+    const firstLine = String(text || '').split(/\r?\n/).find(line => String(line || '').trim()) || '';
+    const normalized = this.normalizeHeader(firstLine);
+    return /fecha|descripcion|monto|nrooperacion|importe|detalle|concepto|movimiento/.test(normalized)
+      && /[;,|\t]/.test(firstLine);
+  }
+
+  private normalizePdfLine(value: string): string {
+    return String(value || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private isPdfNoiseLine(line: string): boolean {
+    const normalized = this.normalizeOperacion(line);
+    return !normalized
+      || /^---PAGE\d+---$/i.test(normalized)
+      || /^PAGINA\d+/i.test(normalized)
+      || /^RESUMEN/i.test(normalized)
+      || /^CUENTA/i.test(normalized)
+      || /^SALDOANTERIOR/i.test(normalized)
+      || /^SALDOACTUAL/i.test(normalized)
+      || /^FECHA(?:VALOR|OPERACION)?DESCRIPCION/i.test(normalized)
+      || /^MOVIMIENTOS?DELCUENTA/i.test(normalized);
+  }
+
+  private isAccountStatementNoiseLine(line: string): boolean {
+    const normalized = this.normalizeOperacion(line);
+    return !normalized
+      || /^---PAGE\d+---$/i.test(normalized)
+      || normalized === 'NRO.'
+      || normalized === 'TRANSACCION'
+      || normalized === 'FECHADESCRIPCIONIMPORTESALDO'
+      || normalized.startsWith('ULTIMOSMOVIMIENTOSDE')
+      || normalized.startsWith('NUMERODECUENTA');
+  }
+
+  private isAccountStatementIgnorableContext(line: string): boolean {
+    return this.isAccountStatementNoiseLine(line) || /^\$\s*\d/.test(String(line || '').trim()) && !this.startsWithStatementDate(line);
+  }
+
+  private isStandaloneAmountLine(line: string): boolean {
+    return /^-?\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})$/.test(String(line || '').trim());
+  }
+
+  private isMostlyNumericLine(line: string): boolean {
+    return /^\d{8,14}$/.test(String(line || '').trim()) || /^\d{11,14}$/.test(this.normalizeOperacion(line));
+  }
+
+  private extractAmountTokens(value: string): string[] {
+    return [...String(value || '').matchAll(/-?\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})/g)].map(match => match[0]);
+  }
+
+  private cleanAccountStatementDescription(value: string, transactionId: string, amountToken: string): string {
+    const cleaned = String(value || '')
+      .replace(new RegExp(`\\b${transactionId}\\b`, 'g'), ' ')
+      .replace(new RegExp(amountToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), ' ')
+      .replace(/\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})/g, ' ')
+      .replace(/\b\d{11,14}\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return cleaned;
+  }
+
+  private extractExternalReference(value: string): string | undefined {
+    const explicit = String(value || '').match(/(?:TRANSF|CREDIN|TEF)[:\s]+([A-Z0-9-]{8,})/i);
+    return explicit?.[1] ? this.normalizeOperacion(explicit[1]) : undefined;
+  }
+
+  private startsWithStatementDate(line: string): boolean {
+    return /^(\d{2}[/-]\d{2}[/-]\d{4})(?:\s+\d{2}[/-]\d{2}[/-]\d{4})?\b/.test(String(line || '').trim());
+  }
+
+  private pickStatementAmountToken(value: string): { value: string; index: number } | null {
+    const matches = [...String(value || '').matchAll(/[+-]?\$?\d{1,3}(?:\.\d{3})*(?:,\d{2})|[+-]?\$?\d+(?:,\d{2})/g)];
+    if (!matches.length) {
+      return null;
+    }
+
+    const signed = matches.find(match => /^[+-]/.test(match[0] || ''));
+    const selected = signed || matches[matches.length - 1];
+    return {
+      value: selected[0],
+      index: selected.index || 0
+    };
+  }
+
+  private extractOperacionFromStatement(value: string): string | undefined {
+    const explicit = String(value || '').match(/(?:NRO(?:\.|\s+DE)?\s*OPERACION|NROOPERACION|OPERACION|OP\.?|TRX|REF(?:ERENCIA)?|COMPROBANTE)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{5,})/i);
+    if (explicit?.[1]) {
+      return this.normalizeOperacion(explicit[1]);
+    }
+
+    const tokens = String(value || '').split(/\s+/);
+    const inferred = tokens.find(token => /^(?=.*\d)(?=.*[A-Z])[A-Z0-9._/-]{6,}$/i.test(token));
+    return inferred ? this.normalizeOperacion(inferred) : undefined;
+  }
+
+  private cleanStatementDescription(value: string, nroOperacion?: string): string {
+    let next = String(value || '');
+
+    if (nroOperacion) {
+      const escaped = nroOperacion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      next = next.replace(new RegExp(escaped, 'ig'), ' ');
+    }
+
+    next = next
+      .replace(/(?:NRO(?:\.|\s+DE)?\s*OPERACION|NROOPERACION|OPERACION|OP\.?|TRX|REF(?:ERENCIA)?|COMPROBANTE)\s*[:#-]?/gi, ' ')
+      .replace(/\b(?:CREDITO|DEBITO|DB|CR)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return next;
+  }
+
+  private detectStatementTipo(body: string, amountToken: string): 'CREDITO' | 'DEBITO' {
+    const normalized = this.normalizeOperacion(body);
+    if (/^-/.test(amountToken) || /\bDEBITO\b|\bDB\b|\bPAGO\b|\bCOMPRA\b|\bEXTRACCION\b|\bCOMISION\b|\bIMPUESTO\b/.test(normalized)) {
+      return 'DEBITO';
+    }
+
+    if (/^\+/.test(amountToken) || /\bCREDITO\b|\bCR\b|\bACREDITACION\b|\bDEPOSITO\b|\bTRANSFERENCIARECIBIDA\b|\bHABER\b/.test(normalized)) {
+      return 'CREDITO';
+    }
+
+    return 'CREDITO';
+  }
+
+  private buildImportPreview(rows: MovimientoImportado[]): string {
+    const header = 'fecha;descripcion;monto;nroOperacion;banco;cuenta;referenciaExterna;tipo';
+    const body = rows.map(item => [
+      item.fecha,
+      this.escapeDelimitedField(item.descripcion),
+      this.formatPreviewAmount(item.monto),
+      item.nroOperacion || '',
+      item.banco || '',
+      item.cuenta || '',
+      item.referenciaExterna || '',
+      item.tipo
+    ].join(';'));
+
+    return [header, ...body].join('\n');
+  }
+
+  private escapeDelimitedField(value: string): string {
+    const clean = String(value || '').replace(/"/g, '""');
+    return /[;\n"]/.test(clean) ? `"${clean}"` : clean;
+  }
+
+  private formatPreviewAmount(value: number): string {
+    return Number(value || 0).toFixed(2).replace('.', ',');
+  }
+
+  private async extractTextFromPdf(file: File): Promise<string> {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL('assets/pdf.worker.min.mjs', document.baseURI).toString();
+    }
+    const data = new Uint8Array(await file.arrayBuffer());
+    const loadingTask = pdfjs.getDocument({
+      data,
+      useWorkerFetch: false,
+      isEvalSupported: false
+    } as any);
+    const pdf = await loadingTask.promise;
+    const pages: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const items = (textContent.items as Array<any>)
+        .filter(item => 'str' in item && Array.isArray(item.transform))
+        .map(item => ({
+          str: String(item.str || '').trim(),
+          x: Number(item.transform[4] || 0),
+          y: Number(item.transform[5] || 0)
+        }))
+        .filter(item => item.str);
+
+      items.sort((a, b) => {
+        if (Math.abs(a.y - b.y) <= 2) {
+          return a.x - b.x;
+        }
+        return b.y - a.y;
+      });
+
+      const lines: Array<{ y: number; parts: string[] }> = [];
+      items.forEach(item => {
+        const last = lines[lines.length - 1];
+        if (!last || Math.abs(last.y - item.y) > 2) {
+          lines.push({ y: item.y, parts: [item.str] });
+          return;
+        }
+
+        last.parts.push(item.str);
+      });
+
+      pages.push(lines.map(line => this.normalizePdfLine(line.parts.join(' '))).filter(Boolean).join('\n'));
+    }
+
+    return pages.filter(Boolean).join('\n');
   }
 
   private normalizeHeader(value: string): string {

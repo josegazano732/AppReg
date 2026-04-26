@@ -236,6 +236,39 @@ export class CajaService {
     this.cierres$.next([]);
   }
 
+  async clearTemporaryScenarioData(prefix: string): Promise<{ registros: number; ingresos: number; gastos: number; cierres: number }> {
+    const normalizedPrefix = String(prefix || '').trim().toUpperCase();
+    if (!normalizedPrefix) {
+      return { registros: 0, ingresos: 0, gastos: 0, cierres: 0 };
+    }
+
+    const registrosActuales = this.getRegistrosSnapshot();
+    const ingresosActuales = this.getIngresosSnapshot();
+    const gastosActuales = this.getGastosSnapshot();
+    const cierresActuales = this.getCierresSnapshot();
+
+    const registrosRemovidos = registrosActuales.filter(item => this.matchesScenarioPrefix(item.id, normalizedPrefix));
+    const ingresosRemovidos = ingresosActuales.filter(item => this.matchesScenarioPrefix(item.id, normalizedPrefix));
+    const gastosRemovidos = gastosActuales.filter(item => this.matchesScenarioPrefix(item.id, normalizedPrefix));
+    const cierresRemovidos = cierresActuales.filter(item => this.matchesScenarioPrefix(item.id, normalizedPrefix));
+
+    if (!registrosRemovidos.length && !ingresosRemovidos.length && !gastosRemovidos.length && !cierresRemovidos.length) {
+      return { registros: 0, ingresos: 0, gastos: 0, cierres: 0 };
+    }
+
+    this.updateCierres(cierresActuales.filter(item => !this.matchesScenarioPrefix(item.id, normalizedPrefix)));
+    this.updateRegistros(registrosActuales.filter(item => !this.matchesScenarioPrefix(item.id, normalizedPrefix)));
+    this.updateIngresos(ingresosActuales.filter(item => !this.matchesScenarioPrefix(item.id, normalizedPrefix)));
+    this.updateGastos(gastosActuales.filter(item => !this.matchesScenarioPrefix(item.id, normalizedPrefix)));
+
+    return {
+      registros: registrosRemovidos.length,
+      ingresos: ingresosRemovidos.length,
+      gastos: gastosRemovidos.length,
+      cierres: cierresRemovidos.length
+    };
+  }
+
   getCierreByFecha(fecha: string): CierreCaja | null {
     return this.getCierresByDate(fecha)[0] || null;
   }
@@ -521,6 +554,10 @@ export class CajaService {
     };
   }
 
+  private matchesScenarioPrefix(id: string | undefined, prefix: string): boolean {
+    return String(id || '').trim().toUpperCase().startsWith(prefix);
+  }
+
   private buildDetalleMediosCierre(
     ingresos: TotalesMedioPago,
     egresos: TotalesMedioPago,
@@ -772,6 +809,9 @@ export class CajaService {
           monto: Number(pago.monto || 0),
           nroOperacion: this.isTransferenciaMedioKey(pago.medioPago)
             ? this.normalizeOperacionTransferencia(pago.nroOperacion)
+            : undefined,
+          fechaTransferencia: this.isTransferenciaMedioKey(pago.medioPago)
+            ? String(pago.fechaTransferencia || '').trim() || undefined
             : undefined
         }))
         .filter(pago => pago.medioPago && pago.monto > 0);

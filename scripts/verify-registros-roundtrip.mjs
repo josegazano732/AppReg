@@ -23,7 +23,7 @@ const conceptosDetalle = [
 const pagosDetalle = [
   { medioPago: 'EFECTIVO', monto: 55 },
   { medioPago: 'POSNET', monto: 25 },
-  { medioPago: 'TRANSFERENCIA', monto: 20, nroOperacion: `TRX${now}` }
+  { medioPago: 'TRANSFERENCIA', monto: 20, nroOperacion: `TRX${now}`, fechaTransferencia: fecha }
 ];
 
 try {
@@ -63,7 +63,8 @@ try {
       (select count(*)::int from public.registro_pagos_detalle where registro_id = r.id) as pagos_count,
       (select coalesce(sum(monto), 0) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'POSNET') as posnet_total,
       (select coalesce(sum(monto), 0) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'TRANSFERENCIA') as transferencia_total,
-      (select max(nro_operacion) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'TRANSFERENCIA') as transferencia_operacion
+      (select max(nro_operacion) from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'TRANSFERENCIA') as transferencia_operacion,
+      (select max(fecha_transferencia)::text from public.registro_pagos_detalle where registro_id = r.id and medio_pago = 'TRANSFERENCIA') as transferencia_fecha
     from public.registros r
     where id = $1
     limit 1`,
@@ -97,8 +98,17 @@ try {
     throw new Error(`Operacion transferencia mismatch: expected TRX${now}, got ${row.transferencia_operacion}`);
   }
 
+  if (String(row.transferencia_fecha || '') !== fecha) {
+    throw new Error(`Fecha transferencia mismatch: expected ${fecha}, got ${row.transferencia_fecha}`);
+  }
+
   if (pagos.length !== 3) {
     throw new Error(`JSON pagosDetalle mismatch: expected 3, got ${pagos.length}`);
+  }
+
+  const transferenciaJson = pagos.find(item => item?.medioPago === 'TRANSFERENCIA');
+  if (String(transferenciaJson?.fechaTransferencia || '') !== fecha) {
+    throw new Error(`JSON fechaTransferencia mismatch: expected ${fecha}, got ${transferenciaJson?.fechaTransferencia}`);
   }
 
   console.log('REGISTRO_ROUNDTRIP_OK', {
@@ -109,7 +119,8 @@ try {
     conceptosCount: row.conceptos_count,
     posnetTotal: row.posnet_total,
     transferenciaTotal: row.transferencia_total,
-    transferenciaOperacion: row.transferencia_operacion
+    transferenciaOperacion: row.transferencia_operacion,
+    transferenciaFecha: row.transferencia_fecha
   });
 
   await client.query('delete from public.registros where id = $1', [id]);

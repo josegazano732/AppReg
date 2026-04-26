@@ -146,108 +146,258 @@ export class CierreDiarioComponent implements OnInit {
   private generarPdfCierre(cierre: CierreCaja, autoPrint: boolean) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const fechaHora = new Date().toLocaleString('es-AR');
-    const movimientosDelDia = [
-      ['Registros operativos', String(this.registrosDia.length), this.formatCurrency(cierre.totalIngresos)],
-      ['Ingresos manuales', String(this.ingresosDia.length), this.formatCurrency(this.sumIngresosManuales())],
-      ['Egresos del dia', String(this.egresosDia.length), this.formatCurrency(cierre.totalGastos)]
-    ];
+    const totalRegistrosOperativos = this.sumRegistrosOperativos();
+    const totalIngresosManuales = this.sumIngresosManuales();
+    const totalEgresos = this.sumEgresosDia();
     const detalleMedios = this.detalleMedios.length
       ? this.detalleMedios
       : this.buildDetalleMediosDesdeSnapshot(this.caja.getInicioOperativoPorMedio(this.fechaSeleccionada), cierre.detalleMedios || []);
 
     const colors = {
-      slate900: [15, 23, 42] as [number, number, number],
-      slate700: [51, 65, 85] as [number, number, number],
-      slate500: [100, 116, 139] as [number, number, number],
-      blue800: [30, 64, 175] as [number, number, number],
-      cyan800: [21, 94, 117] as [number, number, number],
-      gray100: [241, 245, 249] as [number, number, number],
-      gray50: [248, 250, 252] as [number, number, number],
-      gray200: [226, 232, 240] as [number, number, number],
+      ink: [28, 37, 46] as [number, number, number],
+      accent: [109, 134, 148] as [number, number, number],
+      soft: [237, 241, 244] as [number, number, number],
       white: [255, 255, 255] as [number, number, number]
     };
+
+    const resumenEjecutivo = [
+      ['Inicio de caja del dia', this.formatCurrency(this.saldoInicialDia)],
+      ['Registros operativos del dia', this.formatCurrency(totalRegistrosOperativos)],
+      ['Ingresos manuales del dia', this.formatCurrency(totalIngresosManuales)],
+      ['Total ingresos del dia', this.formatCurrency(cierre.totalIngresos)],
+      ['Total egresos del dia', this.formatCurrency(cierre.totalGastos)],
+      ['Movimiento neto del dia', this.formatCurrency(cierre.totalNeto)],
+      ['Disponible proyectado para continuidad', this.formatCurrency(cierre.disponibleContinuidad)],
+      ['Cortes registrados en el dia', String(this.cantidadCierresDia)],
+      ['Estado del informe', cierre.id === 'preview' ? 'Previsualizacion' : 'Cierre registrado']
+    ];
+    const resumenMovimientos = [
+      ['Registros operativos', String(this.registrosDia.length), this.formatCurrency(totalRegistrosOperativos)],
+      ['Ingresos manuales', String(this.ingresosDia.length), this.formatCurrency(totalIngresosManuales)],
+      ['Egresos del dia', String(this.egresosDia.length), this.formatCurrency(totalEgresos)]
+    ];
+
     this.drawPdfHeader(doc, cierre, fechaHora, colors);
 
+    let currentY = 28;
+
     if (cierre.observacion) {
-      doc.setFontSize(8);
-      doc.setTextColor(...colors.slate700);
-      doc.text(`Observacion: ${this.normalizeText(cierre.observacion)}`, 14, 30);
+      currentY = this.addPdfParagraph(
+        doc,
+        `Observacion del corte: ${this.normalizeText(cierre.observacion)}`,
+        currentY,
+        colors
+      );
     }
 
-    this.drawSectionTitle(doc, 'Resumen ejecutivo del cierre', 37, colors);
+    currentY = this.startPdfSection(doc, 'Resumen ejecutivo del cierre', currentY, colors);
 
     autoTable(doc, {
-      startY: 40,
+      startY: currentY,
       head: [['Indicador clave', 'Valor']],
-      body: [
-        ['Inicio de caja (continuidad)', this.formatCurrency(this.saldoInicialDia)],
-        ['Movimiento neto del dia', this.formatCurrency(cierre.totalNeto)],
-        ['Disponible proyectado para cierre', this.formatCurrency(cierre.disponibleContinuidad)],
-        ['Cortes registrados en el dia', String(this.cantidadCierresDia)],
-        ['Estado del reporte', cierre.id === 'preview' ? 'Previsualizacion' : 'Cierre registrado']
-      ],
+      body: resumenEjecutivo,
       margin: { left: 12, right: 12 },
-      styles: { fontSize: 8.5, cellPadding: 1.7, valign: 'middle', lineColor: colors.gray200 },
-      headStyles: { fillColor: colors.slate900, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
-      alternateRowStyles: { fillColor: colors.gray50 },
+      styles: { fontSize: 8.4, cellPadding: 1.9, valign: 'middle', lineColor: colors.soft, textColor: colors.ink },
+      headStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: colors.soft },
       columnStyles: {
         0: { cellWidth: 110, halign: 'left', fontStyle: 'bold' },
         1: { cellWidth: 70, halign: 'right' }
       }
     });
 
-    let currentY = (doc as any).lastAutoTable.finalY;
+    currentY = this.getLastAutoTableY(doc, currentY);
+    currentY = this.addPdfParagraph(
+      doc,
+      'Disponible proyectado al cierre = saldo inicial del dia + movimiento neto de cada medio de pago.',
+      currentY + 3,
+      colors
+    );
 
-    this.drawSectionTitle(doc, 'Movimiento diario consolidado', currentY + 8, colors);
+    currentY = this.startPdfSection(doc, 'Cierre proyectado por medio de pago', currentY, colors);
 
     autoTable(doc, {
-      startY: currentY + 11,
-      head: [['Tipo de movimiento', 'Cantidad', 'Monto']],
-      body: movimientosDelDia,
+      startY: currentY,
+      head: [['Medio de pago', 'Inicio', 'Ingresos', 'Egresos', 'Cierre proyectado']],
+      body: detalleMedios.map(item => [
+        item.medioPago,
+        this.formatCurrency(Number(item.saldoInicial || 0)),
+        this.formatCurrency(Number(item.ingresos || 0)),
+        this.formatCurrency(Number(item.egresos || 0)),
+        this.formatCurrency(Number(item.disponible || 0))
+      ]),
+      foot: [[
+        'TOTAL',
+        this.formatCurrency(detalleMedios.reduce((acc, item) => acc + Number(item.saldoInicial || 0), 0)),
+        this.formatCurrency(detalleMedios.reduce((acc, item) => acc + Number(item.ingresos || 0), 0)),
+        this.formatCurrency(detalleMedios.reduce((acc, item) => acc + Number(item.egresos || 0), 0)),
+        this.formatCurrency(detalleMedios.reduce((acc, item) => acc + Number(item.disponible || 0), 0))
+      ]],
       margin: { left: 12, right: 12 },
-      styles: { fontSize: 8.2, cellPadding: 1.5, lineColor: colors.gray200 },
-      headStyles: { fillColor: colors.blue800, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
-      alternateRowStyles: { fillColor: colors.gray50 },
+      styles: { fontSize: 8, cellPadding: 1.6, lineColor: colors.soft, textColor: colors.ink },
+      headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 7.8 },
+      alternateRowStyles: { fillColor: colors.soft },
+      footStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold' },
       columnStyles: {
-        0: { cellWidth: 110, halign: 'left' },
+        0: { cellWidth: 38, halign: 'left', fontStyle: 'bold' },
+        1: { cellWidth: 34, halign: 'right' },
+        2: { cellWidth: 34, halign: 'right' },
+        3: { cellWidth: 34, halign: 'right' },
+        4: { cellWidth: 48, halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    currentY = this.getLastAutoTableY(doc, currentY);
+    currentY = this.addPdfParagraph(
+      doc,
+      `El cierre proyectado por medio ya incluye ingresos y egresos de cada canal. El efectivo proyectado para continuidad queda en ${this.formatCurrency(cierre.disponibleContinuidad)}.`,
+      currentY + 3,
+      colors
+    );
+
+    currentY = this.startPdfSection(doc, 'Resumen del movimiento del dia', currentY, colors);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Origen', 'Cantidad', 'Monto']],
+      body: resumenMovimientos,
+      foot: [['TOTAL MOVIMIENTOS', String(this.registrosDia.length + this.ingresosDia.length + this.egresosDia.length), this.formatCurrency(cierre.totalIngresos + totalEgresos)]],
+      margin: { left: 12, right: 12 },
+      styles: { fontSize: 8.2, cellPadding: 1.5, lineColor: colors.soft, textColor: colors.ink },
+      headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: colors.soft },
+      footStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 110, halign: 'left', fontStyle: 'bold' },
         1: { cellWidth: 30, halign: 'center' },
         2: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
       }
     });
 
-    currentY = (doc as any).lastAutoTable.finalY;
+    currentY = this.getLastAutoTableY(doc, currentY);
+    currentY = this.addPdfParagraph(
+      doc,
+      'A continuacion se detalla el movimiento del dia en tres bloques separados para evitar mezclar tipos de operacion.',
+      currentY + 3,
+      colors
+    );
 
-    this.drawSectionTitle(doc, 'Como se va a cerrar por medio de pago', currentY + 8, colors);
+    currentY = this.startPdfSection(doc, 'Detalle del movimiento del dia - Registros operativos', currentY, colors);
+
+    currentY = this.addPdfParagraph(
+      doc,
+      `Cantidad de registros: ${this.registrosDia.length}. Total operado: ${this.formatCurrency(totalRegistrosOperativos)}.`,
+      currentY,
+      colors
+    );
 
     autoTable(doc, {
-      startY: currentY + 11,
-      head: [['Medio de pago', 'Inicio de caja', 'Movimiento neto', 'Cierre proyectado']],
-      body: detalleMedios.map(item => [
-        item.medioPago,
-        this.formatCurrency(Number(item.saldoInicial || 0)),
-        this.formatCurrency(Number(item.saldo || 0)),
-        this.formatCurrency(Number(item.disponible || 0))
-      ]),
+      startY: currentY,
+      head: [['Hora', 'Recibo', 'Titular', 'Detalle', 'Importe']],
+      body: this.registrosDia.length
+        ? this.registrosDia.map(registro => [
+            this.formatHour(registro.createdAt),
+            this.normalizeText(registro.nroRecibo || '-'),
+            this.normalizeText(registro.nombre || '-'),
+            this.compactBulletLines(`${this.describeConceptosPdf(registro)}\n${this.describePagosPdf(registro)}`),
+            this.formatCurrency(Number(registro.subtotal || 0))
+          ])
+        : [['-', '-', 'Sin registros operativos en el dia', '-', this.formatCurrency(0)]],
+      foot: [['', '', '', 'Total registros operativos', this.formatCurrency(totalRegistrosOperativos)]],
       margin: { left: 12, right: 12 },
-      styles: { fontSize: 8.2, cellPadding: 1.5, lineColor: colors.gray200 },
-      headStyles: { fillColor: colors.cyan800, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
-      alternateRowStyles: { fillColor: colors.gray50 },
+      styles: { fontSize: 7.4, cellPadding: 1.3, lineColor: colors.soft, textColor: colors.ink, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold', fontSize: 7.6 },
+      alternateRowStyles: { fillColor: colors.soft },
+      footStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold' },
       columnStyles: {
-        0: { cellWidth: 52, halign: 'left', fontStyle: 'bold' },
-        1: { cellWidth: 42, halign: 'right' },
-        2: { cellWidth: 42, halign: 'right' },
-        3: { cellWidth: 52, halign: 'right', fontStyle: 'bold' }
+        0: { cellWidth: 18, halign: 'left' },
+        1: { cellWidth: 24, halign: 'left' },
+        2: { cellWidth: 36, halign: 'left' },
+        3: { cellWidth: 92, halign: 'left' },
+        4: { cellWidth: 18, halign: 'right', fontStyle: 'bold' }
       }
     });
 
-    const cierreBottom = (doc as any).lastAutoTable.finalY;
+    currentY = this.getLastAutoTableY(doc, currentY);
+    currentY = this.startPdfSection(doc, 'Detalle del movimiento del dia - Ingresos manuales', currentY, colors);
 
-    doc.setFontSize(8);
-    doc.setTextColor(...colors.slate700);
-    doc.text(
-      `Conclusion: inicio de caja ${this.formatCurrency(this.saldoInicialDia)} + movimiento neto ${this.formatCurrency(cierre.totalNeto)} = cierre proyectado ${this.formatCurrency(cierre.disponibleContinuidad)}.`,
-      14,
-      cierreBottom + 7
+    currentY = this.addPdfParagraph(
+      doc,
+      `Cantidad de ingresos manuales: ${this.ingresosDia.length}. Total ingresado: ${this.formatCurrency(totalIngresosManuales)}.`,
+      currentY,
+      colors
+    );
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Hora', 'Tipo', 'Concepto', 'Medio', 'Importe']],
+      body: this.ingresosDia.length
+        ? this.ingresosDia.map(ingreso => [
+            this.formatHour(ingreso.createdAt),
+            this.normalizeText(ingreso.tipoIngreso || '-'),
+            this.normalizeText(ingreso.concepto || '-'),
+            this.normalizeText(this.normalizeMedio(ingreso.medioPago || 'EFECTIVO')),
+            this.formatCurrency(Number(ingreso.monto || 0))
+          ])
+        : [['-', '-', 'Sin ingresos manuales en el dia', '-', this.formatCurrency(0)]],
+      foot: [['', '', '', 'Total ingresos manuales', this.formatCurrency(totalIngresosManuales)]],
+      margin: { left: 12, right: 12 },
+      styles: { fontSize: 7.8, cellPadding: 1.4, lineColor: colors.soft, textColor: colors.ink, overflow: 'linebreak' },
+      headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 7.8 },
+      alternateRowStyles: { fillColor: colors.soft },
+      footStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 20, halign: 'left' },
+        1: { cellWidth: 34, halign: 'left' },
+        2: { cellWidth: 82, halign: 'left' },
+        3: { cellWidth: 32, halign: 'left' },
+        4: { cellWidth: 22, halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    currentY = this.getLastAutoTableY(doc, currentY);
+    currentY = this.startPdfSection(doc, 'Detalle del movimiento del dia - Egresos', currentY, colors);
+
+    currentY = this.addPdfParagraph(
+      doc,
+      `Cantidad de egresos: ${this.egresosDia.length}. Total egresado: ${this.formatCurrency(totalEgresos)}.`,
+      currentY,
+      colors
+    );
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Hora', 'Tipo', 'Descripcion', 'Medio', 'Importe']],
+      body: this.egresosDia.length
+        ? this.egresosDia.map(egreso => [
+            this.formatHour(egreso.createdAt),
+            this.normalizeText(egreso.tipoEgreso || '-'),
+            this.normalizeText(egreso.descripcion || '-'),
+            this.normalizeText(this.normalizeMedio(egreso.medioPago || 'EFECTIVO')),
+            this.formatCurrency(Number(egreso.monto || 0))
+          ])
+        : [['-', '-', 'Sin egresos en el dia', '-', this.formatCurrency(0)]],
+      foot: [['', '', '', 'Total egresos', this.formatCurrency(totalEgresos)]],
+      margin: { left: 12, right: 12 },
+      styles: { fontSize: 7.8, cellPadding: 1.4, lineColor: colors.soft, textColor: colors.ink, overflow: 'linebreak' },
+      headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 7.8 },
+      alternateRowStyles: { fillColor: colors.soft },
+      footStyles: { fillColor: colors.ink, textColor: colors.white, fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 20, halign: 'left' },
+        1: { cellWidth: 34, halign: 'left' },
+        2: { cellWidth: 82, halign: 'left' },
+        3: { cellWidth: 32, halign: 'left' },
+        4: { cellWidth: 22, halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    currentY = this.getLastAutoTableY(doc, currentY);
+    this.addPdfParagraph(
+      doc,
+      `Cierre esperado del dia: inicio ${this.formatCurrency(this.saldoInicialDia)} + neto ${this.formatCurrency(cierre.totalNeto)} = continuidad ${this.formatCurrency(cierre.disponibleContinuidad)}.`,
+      currentY + 3,
+      colors
     );
 
     this.addPdfFooter(doc, cierre, colors);
@@ -259,6 +409,50 @@ export class CierreDiarioComponent implements OnInit {
       window.open(blobUrl, '_blank');
     }
     doc.save(`${baseName}.pdf`);
+  }
+
+  private getLastAutoTableY(doc: jsPDF, fallback: number): number {
+    return (doc as any).lastAutoTable?.finalY || fallback;
+  }
+
+  private startPdfSection(
+    doc: jsPDF,
+    title: string,
+    previousY: number,
+    colors: Record<string, [number, number, number]>
+  ): number {
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let sectionY = previousY + 8;
+
+    if (sectionY > pageHeight - 18) {
+      doc.addPage();
+      sectionY = 18;
+    }
+
+    this.drawSectionTitle(doc, title, sectionY, colors);
+    return sectionY + 4;
+  }
+
+  private addPdfParagraph(
+    doc: jsPDF,
+    text: string,
+    y: number,
+    colors: Record<string, [number, number, number]>
+  ): number {
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let currentY = y;
+
+    if (currentY > pageHeight - 18) {
+      doc.addPage();
+      currentY = 18;
+    }
+
+    const lines = doc.splitTextToSize(this.normalizeText(text), 182);
+    doc.setFontSize(8);
+    doc.setTextColor(...colors.ink);
+    doc.text(lines, 14, currentY);
+
+    return currentY + (lines.length * 4.2);
   }
 
   private buildConceptoResumen(registros: Registro[]) {
@@ -311,21 +505,21 @@ export class CierreDiarioComponent implements OnInit {
   ) {
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    doc.setFillColor(...colors.slate900);
-    doc.roundedRect(10, 8, pageWidth - 20, 13, 2, 2, 'F');
+    doc.setFillColor(...colors.ink);
+    doc.roundedRect(10, 8, pageWidth - 20, 16, 2, 2, 'F');
 
     doc.setTextColor(...colors.white);
-    doc.setFontSize(13);
+    doc.setFontSize(13.5);
     doc.text('Cierre Diario', 16, 16);
-    doc.setFontSize(8);
-    doc.text('Reporte operativo y conciliacion del cierre', 16, 20);
+    doc.setFontSize(8.2);
+    doc.text('Informe de cierre por medio de pago y detalle operativo del dia', 16, 20);
 
     doc.setFontSize(7.7);
-    doc.text(`Fecha operativa: ${cierre.fecha}`, pageWidth - 92, 15);
-    doc.text(`Generado: ${fechaHora}`, pageWidth - 92, 19);
-    doc.text(`Estado: ${cierre.id === 'preview' ? 'Previsualizacion' : 'Cierre registrado'}`, pageWidth - 92, 23);
+    doc.text(`Fecha operativa: ${cierre.fecha}`, pageWidth - 78, 14);
+    doc.text(`Generado: ${fechaHora}`, pageWidth - 78, 18);
+    doc.text(`Estado: ${cierre.id === 'preview' ? 'Previsualizacion' : 'Cierre registrado'}`, pageWidth - 78, 22);
 
-    doc.setTextColor(...colors.slate900);
+    doc.setTextColor(...colors.ink);
   }
 
   private drawSectionTitle(
@@ -335,10 +529,12 @@ export class CierreDiarioComponent implements OnInit {
     colors: Record<string, [number, number, number]>
   ) {
     const pageWidth = doc.internal.pageSize.getWidth();
-    doc.setFillColor(...colors.gray100);
-    doc.roundedRect(12, y - 3, pageWidth - 24, 5.2, 1.2, 1.2, 'F');
+    doc.setFillColor(...colors.soft);
+    doc.roundedRect(12, y - 3, pageWidth - 24, 5.4, 1.2, 1.2, 'F');
+    doc.setDrawColor(...colors.accent);
+    doc.line(12, y + 3.1, pageWidth - 12, y + 3.1);
     doc.setFontSize(8.6);
-    doc.setTextColor(...colors.slate900);
+    doc.setTextColor(...colors.ink);
     doc.text(title, 15, y);
   }
 
@@ -353,14 +549,14 @@ export class CierreDiarioComponent implements OnInit {
 
     for (let page = 1; page <= pageCount; page++) {
       doc.setPage(page);
-      doc.setDrawColor(...colors.gray200);
+      doc.setDrawColor(...colors.soft);
       doc.line(10, pageHeight - 10, pageWidth - 10, pageHeight - 10);
       doc.setFontSize(8);
-      doc.setTextColor(...colors.slate500);
+      doc.setTextColor(...colors.accent);
       doc.text(`Cierre ${cierre.fecha}${cierre.id === 'preview' ? ' | Previsualizacion' : ''}`, 12, pageHeight - 5.5);
       doc.text(`Pagina ${page} de ${pageCount}`, pageWidth - 28, pageHeight - 5.5);
     }
-    doc.setTextColor(...colors.slate900);
+    doc.setTextColor(...colors.ink);
   }
 
   private describeConceptos(registro: Registro): string {
@@ -432,12 +628,36 @@ export class CierreDiarioComponent implements OnInit {
     }).format(date);
   }
 
+  private formatHour(value?: string): string {
+    if (!value) {
+      return '-';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '-';
+    }
+
+    return new Intl.DateTimeFormat('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  }
+
   private formatCurrency(value: number): string {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 }).format(Number(value || 0));
   }
 
+  private sumRegistrosOperativos(): number {
+    return this.registrosDia.reduce((acc, item) => acc + Number(item.subtotal || 0), 0);
+  }
+
   private sumIngresosManuales(): number {
     return this.ingresosDia.reduce((acc, item) => acc + Number(item.monto || 0), 0);
+  }
+
+  private sumEgresosDia(): number {
+    return this.egresosDia.reduce((acc, item) => acc + Number(item.monto || 0), 0);
   }
 
   private buildDetalleMedios(

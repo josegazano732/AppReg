@@ -264,13 +264,26 @@ export class RegistroDiarioComponent implements OnInit {
     return this.isTransferenciaMedio(group?.get('medioPago')?.value);
   }
 
+  isTransferenciaMacroPago(index: number): boolean {
+    const group = this.pagosDetalle.at(index);
+    return this.isTransferenciaMacroMedio(group?.get('medioPago')?.value);
+  }
+
   onPagoMedioChange(index: number) {
     const group = this.pagosDetalle.at(index);
-    if (!group || this.isTransferenciaPago(index)) {
+    if (!group) {
+      return;
+    }
+
+    if (this.isTransferenciaPago(index)) {
+      if (!this.isTransferenciaMacroPago(index)) {
+        group.get('fechaTransferencia')?.setValue('', { emitEvent: false });
+      }
       return;
     }
 
     group.get('nroOperacion')?.setValue('', { emitEvent: false });
+    group.get('fechaTransferencia')?.setValue('', { emitEvent: false });
   }
 
   onPagoOperacionInput(index: number) {
@@ -387,7 +400,7 @@ export class RegistroDiarioComponent implements OnInit {
   formatPagos(registro: Registro): string {
     if (registro.pagosDetalle?.length) {
       return registro.pagosDetalle
-        .map(p => `${p.medioPago}: ${this.formatCurrency(p.monto)}${p.nroOperacion ? ` | Op ${p.nroOperacion}` : ''}`)
+        .map(p => `${p.medioPago}: ${this.formatCurrency(p.monto)}${p.nroOperacion ? ` | Op ${p.nroOperacion}` : ''}${p.fechaTransferencia ? ` | Fecha transf. ${this.formatDateValue(p.fechaTransferencia)}` : ''}`)
         .join(' | ');
     }
     return registro.medioPago || 'EFECTIVO';
@@ -404,7 +417,8 @@ export class RegistroDiarioComponent implements OnInit {
     return this.fb.group({
       medioPago: [defaultMedio, Validators.required],
       monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
-      nroOperacion: ['']
+      nroOperacion: [''],
+      fechaTransferencia: ['']
     });
   }
 
@@ -431,13 +445,16 @@ export class RegistroDiarioComponent implements OnInit {
       .filter(item => item.concepto && item.monto > 0);
   }
 
-  private normalizePagos(list: Array<{ medioPago?: string | null; monto?: number | string | null; nroOperacion?: string | null }>): RegistroPagoDetalle[] {
+  private normalizePagos(list: Array<{ medioPago?: string | null; monto?: number | string | null; nroOperacion?: string | null; fechaTransferencia?: string | null }>): RegistroPagoDetalle[] {
     return (list || [])
       .map(item => ({
         medioPago: (item.medioPago || '').trim().toUpperCase(),
         monto: this.parseImporte(item.monto),
         nroOperacion: this.isTransferenciaMedio(item.medioPago)
           ? this.normalizeNroOperacion(item.nroOperacion)
+          : undefined,
+        fechaTransferencia: this.isTransferenciaMacroMedio(item.medioPago)
+          ? this.normalizeFechaTransferencia(item.fechaTransferencia)
           : undefined
       }))
       .filter(item => item.medioPago && item.monto > 0);
@@ -474,6 +491,19 @@ export class RegistroDiarioComponent implements OnInit {
     return /TRANSFER|CBU|CVU/.test(this.normalizeMedio(value || ''));
   }
 
+  private isTransferenciaMacroMedio(value?: string | null): boolean {
+    return this.normalizeMedio(value || '') === 'TRANSFERENCIA A MACRO';
+  }
+
+  private normalizeFechaTransferencia(value?: string | null): string | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : undefined;
+  }
+
   private normalizeNroOperacion(value?: string | null): string {
     return String(value || '')
       .normalize('NFD')
@@ -486,6 +516,19 @@ export class RegistroDiarioComponent implements OnInit {
 
   private isNroOperacionValido(value: string): boolean {
     return /^[A-Z0-9][A-Z0-9._/-]{5,39}$/.test(value);
+  }
+
+  private formatDateValue(value?: string): string {
+    if (!value) {
+      return '-';
+    }
+
+    const [year, month, day] = String(value).split('-');
+    if (!year || !month || !day) {
+      return value;
+    }
+
+    return `${day}/${month}/${year}`;
   }
 
   private refreshInicioPorMedio() {

@@ -161,19 +161,32 @@
         </div>
 
         <div class="payment-extra-row" *ngIf="isTransferenciaPago(i)">
-          <div class="payment-operation-field">
-            <label class="field-label mb-0">Nro de operacion / transaccion</label>
-            <input
-              type="text"
-              class="form-control"
-              formControlName="nroOperacion"
-              placeholder="Ej: 000123ABC456"
-              autocomplete="off"
-              maxlength="40"
-              (input)="onPagoOperacionInput(i)"
-            >
-            <small class="field-hint">Validacion automatica: obligatorio para transferencias, formato controlado y sin duplicados previos.</small>
-            <small class="field-error" *ngIf="getPagoOperacionError(i)">{{ getPagoOperacionError(i) }}</small>
+          <div class="payment-extra-fields">
+            <div class="payment-operation-field">
+              <label class="field-label mb-0">Nro de operacion / transaccion</label>
+              <input
+                type="text"
+                class="form-control"
+                formControlName="nroOperacion"
+                placeholder="Ej: 000123ABC456"
+                autocomplete="off"
+                maxlength="40"
+                (input)="onPagoOperacionInput(i)"
+              >
+              <small class="field-hint">Validacion automatica: obligatorio para transferencias, formato controlado y sin duplicados previos.</small>
+              <small class="field-error" *ngIf="getPagoOperacionError(i)">{{ getPagoOperacionError(i) }}</small>
+            </div>
+
+            <div class="payment-operation-field" *ngIf="isTransferenciaMacroPago(i)">
+              <label class="field-label mb-0">Fecha de la transferencia</label>
+              <input
+                type="date"
+                class="form-control"
+                formControlName="fechaTransferencia"
+                autocomplete="off"
+              >
+              <small class="field-hint">Corresponde a la fecha que figura en el comprobante entregado por la persona.</small>
+            </div>
           </div>
         </div>
       </div>

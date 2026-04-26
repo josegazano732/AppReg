@@ -49,7 +49,7 @@ const payload = {
   pagosDetalle: [
     { medioPago: 'EFECTIVO', monto: 60 },
     { medioPago: 'POSNET', monto: 30 },
-    { medioPago: 'TRANSFERENCIA', monto: 10, nroOperacion: `TRX${now.getTime()}` }
+    { medioPago: 'TRANSFERENCIA', monto: 10, nroOperacion: `TRX${now.getTime()}`, fechaTransferencia: fecha }
   ],
   createdAt: now.toISOString()
 };
@@ -95,6 +95,10 @@ try {
     throw new Error(`Operacion transferencia mismatch: ${transferencia?.nroOperacion}`);
   }
 
+  if (String(transferencia?.fechaTransferencia || '') !== fecha) {
+    throw new Error(`Fecha transferencia mismatch: ${transferencia?.fechaTransferencia}`);
+  }
+
   console.log('REGISTRO_SUPABASE_ROUNDTRIP_OK', {
     id: row.id,
     fecha: row.fecha,
@@ -103,7 +107,8 @@ try {
     pagosDetalle: pagos.length,
     posnetMonto: posnet?.monto || 0,
     transferenciaMonto: transferencia?.monto || 0,
-    transferenciaOperacion: transferencia?.nroOperacion || ''
+    transferenciaOperacion: transferencia?.nroOperacion || '',
+    transferenciaFecha: transferencia?.fechaTransferencia || ''
   });
 
   const del = await supabase.from('registros').delete().eq('id', id);
