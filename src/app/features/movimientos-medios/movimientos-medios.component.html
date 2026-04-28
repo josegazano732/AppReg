@@ -25,6 +25,15 @@
         </select>
       </label>
 
+      <label class="form-label mb-0 selector-conciliacion">
+        Conciliacion transf.
+        <select class="form-select form-select-sm" [(ngModel)]="filtroConciliacionTransferencia" (change)="onFiltrosChange()">
+          <option value="TODAS">Todas</option>
+          <option value="PENDIENTE">Solo pendientes</option>
+          <option value="REVISAR">Solo revisar</option>
+        </select>
+      </label>
+
       <label class="form-label mb-0">
         Orden
         <select class="form-select form-select-sm" [(ngModel)]="ordenSeleccionado" (change)="onFiltrosChange()">
@@ -40,6 +49,14 @@
     </div>
   </div>
 
+  <div *ngIf="conciliacionError" class="alert alert-danger py-2 px-3 mt-3 mb-0">
+    {{ conciliacionError }}
+  </div>
+
+  <div *ngIf="conciliacionMessage" class="alert alert-success py-2 px-3 mt-3 mb-0">
+    {{ conciliacionMessage }}
+  </div>
+
   <ng-container *ngIf="lineas.length; else emptyState">
     <article class="table-block mt-4">
       <div class="table-head">
@@ -49,15 +66,25 @@
             {{ totalLineas }} movimiento(s) ordenados cronologicamente
             | {{ ordenSeleccionado === 'ASC' ? 'Mas antiguo a mas nuevo' : 'Mas nuevo a mas antiguo' }}
             <ng-container *ngIf="medioSeleccionado !== 'TODOS'"> | Medio: {{ medioSeleccionado }}</ng-container>
+            <ng-container *ngIf="filtroConciliacionTransferencia !== 'TODAS'"> | Conciliacion: {{ filtroConciliacionTransferencia }}</ng-container>
+            | Mostrando {{ pageStart }}-{{ pageEnd }} de {{ lineas.length }} filas
           </small>
         </div>
-        <span class="chip" [class.ok]="totalNeto >= 0" [class.warn]="totalNeto < 0">
-          Neto {{ totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
-        </span>
+        <div class="table-head-actions">
+          <label class="page-size-control">
+            <span>Filas</span>
+            <select class="form-select form-select-sm" [(ngModel)]="pageSize" (change)="onPageSizeChange()">
+              <option *ngFor="let size of pageSizeOptions" [ngValue]="size">{{ size }}</option>
+            </select>
+          </label>
+          <span class="chip" [class.ok]="totalNeto >= 0" [class.warn]="totalNeto < 0">
+            Neto {{ totalNeto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}
+          </span>
+        </div>
       </div>
 
       <div class="table-wrap">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0 compact-table">
           <thead>
             <tr>
               <th>Fecha operativa</th>
@@ -65,27 +92,76 @@
               <th>Medio</th>
               <th>Origen</th>
               <th>Detalle</th>
-              <th>Referencia</th>
+              <th class="col-referencia">Ref.</th>
               <th class="text-end">Ingreso</th>
               <th class="text-end">Egreso</th>
               <th class="text-end">Saldo acumulado</th>
             </tr>
           </thead>
           <tbody>
-            <ng-container *ngFor="let item of lineas; trackBy: trackByLinea">
-              <tr *ngIf="isMovimiento(item); else cierreRow">
+            <ng-container *ngFor="let item of pagedLineas; trackBy: trackByLinea">
+              <tr
+                *ngIf="isMovimiento(item); else cierreRow"
+                [class.row-transferencia-conciliado]="item.estadoConciliacionVisual === 'CONCILIADO'"
+                [class.row-transferencia-pendiente]="item.estadoConciliacionVisual === 'PENDIENTE'"
+                [class.row-transferencia-revisar]="item.estadoConciliacionVisual === 'REVISAR'"
+              >
                 <td>{{ item.fecha | date:'dd/MM/yyyy' }}</td>
                 <td>{{ item.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td>
                   <span class="chip small neutral">{{ item.medioPago }}</span>
+                  <small *ngIf="item.estadoConciliacionVisual === 'CONCILIADO'" class="transferencia-conciliado-label">Conciliado</small>
+                  <small *ngIf="item.estadoConciliacionVisual === 'PENDIENTE'" class="transferencia-pendiente-label">NO CONCILIADO</small>
+                  <small *ngIf="item.estadoConciliacionVisual === 'REVISAR'" class="transferencia-revisar-label">Revisar conciliacion</small>
                 </td>
                 <td>
                   <span class="chip small" [class.ok]="item.origen !== 'EGRESO'" [class.warn]="item.origen === 'EGRESO'">
                     {{ item.origen }}
                   </span>
                 </td>
-                <td>{{ item.detalle }}</td>
-                <td><small>{{ item.referencia }}</small></td>
+                <td>
+                  <div>{{ item.detalle }}</div>
+
+                  <div *ngIf="puedeConciliarDesdeFila(item)" class="conciliacion-inline mt-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" (click)="toggleConciliacionPanel(item)">
+                      {{ panelConciliacionAbierto[getConciliacionPagoKey(item)] ? 'Ocultar coincidencias' : 'Conciliar desde aqui' }}
+                    </button>
+
+                    <div *ngIf="panelConciliacionAbierto[getConciliacionPagoKey(item)]" class="conciliacion-inline-panel mt-2">
+                      <small class="conciliacion-inline-copy">
+                        Se proponen movimientos bancarios por operacion, monto, fecha y CUIT cuando existe.
+                      </small>
+
+                      <select class="form-select form-select-sm mt-2" [(ngModel)]="seleccionMovimientoConciliacion[getConciliacionPagoKey(item)]">
+                        <option value="">Selecciona un movimiento bancario</option>
+                        <option *ngFor="let option of getOpcionesConciliacion(item)" [ngValue]="option.movimientoId">
+                          {{ option.fecha | date:'dd/MM/yyyy' }} | {{ option.descripcion }} | {{ option.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }} | Op {{ option.nroOperacion || 's/d' }} | {{ option.motivoManual }}
+                        </option>
+                      </select>
+
+                      <small *ngIf="!getOpcionesConciliacion(item).length" class="conciliacion-inline-copy text-danger mt-2 d-block">
+                        No encontre coincidencias candidatas para este pago.
+                      </small>
+
+                      <button
+                        type="button"
+                        class="btn btn-primary btn-sm mt-2"
+                        (click)="aplicarConciliacionDesdeMovimiento(item)"
+                        [disabled]="!getOpcionesConciliacion(item).length"
+                      >
+                        Confirmar conciliacion
+                      </button>
+                    </div>
+                  </div>
+                </td>
+                <td class="col-referencia">
+                  <div class="reference-cell" [title]="item.referencia">
+                    <small>{{ shortReference(item.referencia) }}</small>
+                    <button type="button" class="copy-ref-btn" (click)="copyReference(item.referencia)" aria-label="Copiar referencia">
+                      Copiar
+                    </button>
+                  </div>
+                </td>
                 <td class="text-end text-emerald">
                   <ng-container *ngIf="item.monto > 0">{{ item.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</ng-container>
                   <ng-container *ngIf="item.monto <= 0">-</ng-container>
@@ -118,6 +194,16 @@
             </ng-container>
           </tbody>
         </table>
+      </div>
+
+      <div class="pagination-bar" *ngIf="lineas.length > pageSize">
+        <small class="pagination-meta">Pagina {{ currentPage }} de {{ totalPages }}</small>
+        <div class="pagination-actions">
+          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="goToPage(1)" [disabled]="currentPage === 1">Primera</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">Anterior</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">Siguiente</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" (click)="goToPage(totalPages)" [disabled]="currentPage === totalPages">Ultima</button>
+        </div>
       </div>
     </article>
   </ng-container>

@@ -105,7 +105,9 @@ export class ConciliacionBancariaComponent implements OnInit {
         }
 
         this.importText = this.buildImportPreview(movimientos);
-        this.importMessage = `PDF procesado. Se detectaron ${movimientos.length} movimiento(s). Revisa la vista previa y confirma con Importar texto.`;
+        this.conciliacion.importMovimientos(movimientos);
+        this.refresh();
+        this.importMessage = `PDF procesado. Se importaron ${movimientos.length} movimiento(s) y se recalculo la conciliacion automaticamente.`;
       } else {
         const rawText = await file.text();
         this.importText = rawText;
@@ -349,7 +351,7 @@ export class ConciliacionBancariaComponent implements OnInit {
   }
 
   private parseAccountStatementRow(currentLine: string, previousLines: string[], nextLines: string[]): MovimientoImportado | null {
-    const match = currentLine.match(/^(\d{2}[/-]\d{2}[/-]\d{4})\s+(\d+)\s*(.*)$/);
+    const match = currentLine.match(/^(\d{2}[/-]\d{2}[/-]\d{2,4})\s+(\d+)\s*(.*)$/);
     if (!match) {
       return null;
     }
@@ -435,7 +437,7 @@ export class ConciliacionBancariaComponent implements OnInit {
   }
 
   private parsePdfStatementBlock(block: string): MovimientoImportado | null {
-    const match = block.match(/^(\d{2}[/-]\d{2}[/-]\d{4})(?:\s+\d{2}[/-]\d{2}[/-]\d{4})?\s+(.*)$/);
+    const match = block.match(/^(\d{2}[/-]\d{2}[/-]\d{2,4})(?:\s+\d{2}[/-]\d{2}[/-]\d{2,4})?\s+(.*)$/);
     if (!match) {
       return null;
     }
@@ -644,7 +646,7 @@ export class ConciliacionBancariaComponent implements OnInit {
   }
 
   private startsWithStatementDate(line: string): boolean {
-    return /^(\d{2}[/-]\d{2}[/-]\d{4})(?:\s+\d{2}[/-]\d{2}[/-]\d{4})?\b/.test(String(line || '').trim());
+    return /^(\d{2}[/-]\d{2}[/-]\d{2,4})(?:\s+\d{2}[/-]\d{2}[/-]\d{2,4})?\b/.test(String(line || '').trim());
   }
 
   private pickStatementAmountToken(value: string): { value: string; index: number } | null {
@@ -796,8 +798,14 @@ export class ConciliacionBancariaComponent implements OnInit {
       return clean;
     }
 
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
-      const [day, month, year] = clean.split('/');
+    if (/^\d{2}[/-]\d{2}[/-]\d{4}$/.test(clean)) {
+      const [day, month, year] = clean.split(/[/-]/);
+      return `${year}-${month}-${day}`;
+    }
+
+    if (/^\d{2}[/-]\d{2}[/-]\d{2}$/.test(clean)) {
+      const [day, month, shortYear] = clean.split(/[/-]/);
+      const year = Number(shortYear) >= 70 ? `19${shortYear}` : `20${shortYear}`;
       return `${year}-${month}-${day}`;
     }
 

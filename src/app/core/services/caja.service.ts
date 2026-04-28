@@ -138,6 +138,66 @@ export class CajaService {
     this.registros$.next(safe);
   }
 
+  syncRegistroPagoTransferencia(
+    registroId: string,
+    ordenPago: number,
+    patch: Pick<RegistroPagoDetalle, 'nroOperacion' | 'fechaTransferencia'>
+  ): boolean {
+    const targetRegistroId = String(registroId || '').trim();
+    const targetOrden = Number(ordenPago || 0);
+    if (!targetRegistroId || targetOrden <= 0) {
+      return false;
+    }
+
+    const normalizedOperacion = this.normalizeOperacionTransferencia(patch.nroOperacion);
+    const normalizedFecha = String(patch.fechaTransferencia || '').trim() || undefined;
+    let changed = false;
+    const now = new Date().toISOString();
+
+    const next = this.getRegistrosSnapshot().map(registro => {
+      if (registro.id !== targetRegistroId) {
+        return registro;
+      }
+
+      const pagosDetalle = this.normalizeRegistroPagos(registro);
+      const index = targetOrden - 1;
+      const pagoActual = pagosDetalle[index];
+      if (!pagoActual) {
+        return registro;
+      }
+
+      const nextPago: RegistroPagoDetalle = {
+        ...pagoActual,
+        nroOperacion: normalizedOperacion || pagoActual.nroOperacion,
+        fechaTransferencia: normalizedFecha || pagoActual.fechaTransferencia
+      };
+
+      if (
+        nextPago.nroOperacion === pagoActual.nroOperacion
+        && nextPago.fechaTransferencia === pagoActual.fechaTransferencia
+      ) {
+        return registro;
+      }
+
+      changed = true;
+      const nextPagosDetalle = [...pagosDetalle];
+      nextPagosDetalle[index] = nextPago;
+
+      return {
+        ...registro,
+        pagosDetalle: nextPagosDetalle,
+        updatedAt: now
+      };
+    });
+
+    if (changed) {
+      this.updateRegistros(next);
+    }
+
+    return changed;
+  }
+
+
   addRegistro(registro: Omit<Registro, 'id' | 'createdAt' | 'updatedAt'>) {
     const current = this.getRegistrosSnapshot();
     const fechaOperativa = registro.fecha || this.todayDateKey();
@@ -478,6 +538,14 @@ export class CajaService {
     };
   }
 
+  getSaldoAcumuladoPorMedioHasta(fecha: string): Record<string, number> {
+    return this.buildSaldoAcumuladoPorMedio(itemFecha => itemFecha <= fecha);
+  }
+
+  getSaldoAcumuladoPorMedioAntesDe(fecha: string): Record<string, number> {
+    return this.buildSaldoAcumuladoPorMedio(itemFecha => itemFecha < fecha);
+  }
+
   computeTotalesMedioPago(regs: Registro[]): TotalesMedioPago {
     const acc: TotalesMedioPago = { efectivo: 0, cheques: 0, posnet: 0, deposito: 0, otros: {} };
     regs.forEach(r => {
@@ -552,6 +620,44 @@ export class CajaService {
       deposito: Number(a.deposito || 0) + Number(b.deposito || 0),
       otros: mergedOtros
     };
+  }
+
+  private buildSaldoAcumuladoPorMedio(dateFilter: (fecha: string) => boolean): Record<string, number> {
+    const registros = this.getRegistrosSnapshot().filter(item => dateFilter(item.fecha || this.dateKey(item.createdAt)));
+    const ingresos = this.getIngresosSnapshot().filter(item => dateFilter(item.fecha || this.dateKey(item.createdAt)));
+    const gastos = this.getGastosSnapshot().filter(item => dateFilter(item.fecha || this.dateKey(item.createdAt)));
+
+    const ingresosRegistros = this.computeTotalesMedioPago(registros);
+    const ingresosManuales = this.computeTotalesIngresosPorMedio(ingresos);
+    const ingresosTotales = this.mergeTotales(ingresosRegistros, ingresosManuales);
+    const gastosTotales = this.computeTotalesGastosPorMedio(gastos);
+
+    const medios = [
+      'EFECTIVO',
+      'CHEQUES',
+      'POSNET',
+      'DEPOSITO',
+      ...Object.keys(ingresosTotales.otros || {}),
+      ...Object.keys(gastosTotales.otros || {})
+    ];
+
+    return [...new Set(medios.filter(Boolean))].reduce<Record<string, number>>((acc, medio) => {
+      const key = this.normalizeMedioKey(medio);
+      if (!key) {
+        return acc;
+      }
+
+      acc[key] = this.getTotalValueByMedio(ingresosTotales, key) - this.getTotalValueByMedio(gastosTotales, key);
+      return acc;
+    }, {});
+  }
+
+  private getTotalValueByMedio(totales: TotalesMedioPago, medio: string): number {
+    if (medio === 'EFECTIVO') return Number(totales.efectivo || 0);
+    if (medio === 'CHEQUES') return Number(totales.cheques || 0);
+    if (medio === 'POSNET') return Number(totales.posnet || 0);
+    if (medio === 'DEPOSITO') return Number(totales.deposito || 0);
+    return Number((totales.otros || {})[medio] || 0);
   }
 
   private matchesScenarioPrefix(id: string | undefined, prefix: string): boolean {
@@ -810,6 +916,9 @@ export class CajaService {
           nroOperacion: this.isTransferenciaMedioKey(pago.medioPago)
             ? this.normalizeOperacionTransferencia(pago.nroOperacion)
             : undefined,
+          nroCuit: this.isTransferenciaMedioKey(pago.medioPago)
+            ? this.normalizeCuitTransferencia(pago.nroCuit)
+            : undefined,
           fechaTransferencia: this.isTransferenciaMedioKey(pago.medioPago)
             ? String(pago.fechaTransferencia || '').trim() || undefined
             : undefined
@@ -850,6 +959,11 @@ export class CajaService {
       .replace(/\s+/g, '')
       .trim()
       .toUpperCase();
+  }
+
+  private normalizeCuitTransferencia(value?: string): string | undefined {
+    const normalized = String(value || '').replace(/\D/g, '').slice(0, 11);
+    return normalized || undefined;
   }
 
   private normalizeRegistroFecha(item: Registro): string {

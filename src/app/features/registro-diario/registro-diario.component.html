@@ -173,8 +173,23 @@
                 maxlength="40"
                 (input)="onPagoOperacionInput(i)"
               >
-              <small class="field-hint">Validacion automatica: obligatorio para transferencias, formato controlado y sin duplicados previos.</small>
+              <small class="field-hint">Validacion automatica: obligatorio para otras transferencias. En Transferencia a Macro puede quedar vacio si no lo tienes.</small>
               <small class="field-error" *ngIf="getPagoOperacionError(i)">{{ getPagoOperacionError(i) }}</small>
+            </div>
+
+            <div class="payment-operation-field" *ngIf="isTransferenciaMacroPago(i)">
+              <label class="field-label mb-0">Nro CUIT</label>
+              <input
+                type="text"
+                class="form-control"
+                formControlName="nroCuit"
+                placeholder="Solo numeros, ej: 20123456789"
+                autocomplete="off"
+                inputmode="numeric"
+                maxlength="11"
+                (input)="onPagoCuitInput(i)"
+              >
+              <small class="field-hint">Opcional. Se guarda junto al pago para tener referencia de la transferencia.</small>
             </div>
 
             <div class="payment-operation-field" *ngIf="isTransferenciaMacroPago(i)">
@@ -185,7 +200,7 @@
                 formControlName="fechaTransferencia"
                 autocomplete="off"
               >
-              <small class="field-hint">Corresponde a la fecha que figura en el comprobante entregado por la persona.</small>
+              <small class="field-hint">Opcional. Si la tienes, ayuda a conciliar mejor contra el banco.</small>
             </div>
           </div>
         </div>

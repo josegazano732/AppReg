@@ -361,15 +361,10 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   private refreshInicioCaja() {
     const fechaOperativa = this.caja.getTodayDateKey();
-    const inicio = this.caja.getInicioOperativoPorMedio(fechaOperativa);
+    const inicio = this.caja.getSaldoAcumuladoPorMedioAntesDe(fechaOperativa);
     const cierreReferencia: CierreCaja | null = this.caja.getCierreBaseOperativa(fechaOperativa);
-    const cajaDia = this.caja.getCajaPendienteParaCierre(fechaOperativa);
-    const mediosConfig = this.cfg.getMedios();
-    const mediosBase = ['EFECTIVO', 'CHEQUES', 'POSNET', 'DEPOSITO'];
-    const mediosDetectados = Object.keys(inicio || {}).filter(Boolean);
-    const medios = [...new Set([...mediosConfig, ...mediosBase, ...mediosDetectados])]
-      .map(m => this.normalizeMedio(m))
-      .filter(Boolean);
+    const cajaDia = this.caja.getCajaDiaria(fechaOperativa);
+    const medios = this.collectMedios(inicio, cajaDia.ingresos, cajaDia.gastos);
 
     const items = medios.map(medio => ({ medio, monto: Number(inicio[medio] || 0) }));
 
@@ -382,6 +377,20 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.disponibilidadPorMedio = this.buildDisponibilidadPorMedio(inicio, cajaDia.ingresos, cajaDia.gastos, medios);
     this.netoOperativoTotal = this.disponibilidadPorMedio.reduce((sum, item) => sum + Number(item.movimientoNeto || 0), 0);
     this.disponibleOperativoTotal = this.disponibilidadPorMedio.reduce((sum, item) => sum + Number(item.disponible || 0), 0);
+  }
+
+  private collectMedios(
+    inicioPorMedio: Record<string, number>,
+    ingresos: TotalesMedioPago,
+    egresos: TotalesMedioPago
+  ): string[] {
+    const base = ['EFECTIVO', 'CHEQUES', 'POSNET', 'DEPOSITO'];
+    const configurados = this.cfg.getMedios().map(item => this.normalizeMedio(item));
+    const inicio = Object.keys(inicioPorMedio || {}).map(item => this.normalizeMedio(item));
+    const otros = [...new Set([...Object.keys(ingresos.otros || {}), ...Object.keys(egresos.otros || {})])]
+      .map(item => this.normalizeMedio(item));
+
+    return [...new Set([...configurados, ...base, ...inicio, ...otros])].filter(Boolean);
   }
 
   private buildDisponibilidadPorMedio(

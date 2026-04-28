@@ -127,6 +127,7 @@ const statements = [
       medio_pago text not null,
       monto numeric not null default 0,
       nro_operacion text,
+      nro_cuit text,
       medio_pago_id bigint,
       "createdAt" timestamptz not null default now(),
       primary key (registro_id, orden),
@@ -137,6 +138,7 @@ const statements = [
     );`,
 
   `alter table public.registro_pagos_detalle add column if not exists nro_operacion text;`,
+  `alter table public.registro_pagos_detalle add column if not exists nro_cuit text;`,
 
   `create index if not exists idx_registro_conceptos_detalle_concepto_id
     on public.registro_conceptos_detalle (concepto_id);`,
@@ -186,13 +188,14 @@ const statements = [
 
   `alter table public.registro_pagos_detalle add column if not exists fecha_transferencia date;`,
 
-  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, fecha_transferencia, medio_pago_id)
+  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, nro_cuit, fecha_transferencia, medio_pago_id)
    select
      r.id,
      detalle.ord::int,
      upper(trim(coalesce(detalle.value->>'medioPago', ''))),
      coalesce((detalle.value->>'monto')::numeric, 0),
      nullif(upper(regexp_replace(trim(coalesce(detalle.value->>'nroOperacion', '')), '\\s+', '', 'g')), ''),
+     nullif(regexp_replace(trim(coalesce(detalle.value->>'nroCuit', '')), '\\D', '', 'g'), ''),
      case
        when coalesce(detalle.value->>'fechaTransferencia', '') ~ '^\\d{4}-\\d{2}-\\d{2}$'
          then (detalle.value->>'fechaTransferencia')::date
@@ -208,15 +211,17 @@ const statements = [
    set medio_pago = excluded.medio_pago,
        monto = excluded.monto,
        nro_operacion = excluded.nro_operacion,
+       nro_cuit = excluded.nro_cuit,
        fecha_transferencia = excluded.fecha_transferencia,
        medio_pago_id = excluded.medio_pago_id;`,
 
-  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, fecha_transferencia, medio_pago_id)
+  `insert into public.registro_pagos_detalle (registro_id, orden, medio_pago, monto, nro_operacion, nro_cuit, fecha_transferencia, medio_pago_id)
    select
      r.id,
      1,
      upper(trim(coalesce(r."medioPago", ''))),
      coalesce(r.subtotal, 0),
+     null,
      null,
      null,
      m.id
@@ -229,6 +234,7 @@ const statements = [
    set medio_pago = excluded.medio_pago,
        monto = excluded.monto,
        nro_operacion = excluded.nro_operacion,
+       nro_cuit = excluded.nro_cuit,
        fecha_transferencia = excluded.fecha_transferencia,
        medio_pago_id = excluded.medio_pago_id;`,
 

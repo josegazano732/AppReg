@@ -277,12 +277,14 @@ export class RegistroDiarioComponent implements OnInit {
 
     if (this.isTransferenciaPago(index)) {
       if (!this.isTransferenciaMacroPago(index)) {
+        group.get('nroCuit')?.setValue('', { emitEvent: false });
         group.get('fechaTransferencia')?.setValue('', { emitEvent: false });
       }
       return;
     }
 
     group.get('nroOperacion')?.setValue('', { emitEvent: false });
+    group.get('nroCuit')?.setValue('', { emitEvent: false });
     group.get('fechaTransferencia')?.setValue('', { emitEvent: false });
   }
 
@@ -291,6 +293,16 @@ export class RegistroDiarioComponent implements OnInit {
     if (!control) return;
 
     const normalized = this.normalizeNroOperacion(control.value);
+    if (normalized !== control.value) {
+      control.setValue(normalized, { emitEvent: false });
+    }
+  }
+
+  onPagoCuitInput(index: number) {
+    const control = this.pagosDetalle.at(index)?.get('nroCuit');
+    if (!control) return;
+
+    const normalized = this.normalizeNroCuit(control.value);
     if (normalized !== control.value) {
       control.setValue(normalized, { emitEvent: false });
     }
@@ -310,7 +322,9 @@ export class RegistroDiarioComponent implements OnInit {
     }
 
     if (!normalized) {
-      return 'Ingresa el nro de operacion o transaccion para conciliar la transferencia.';
+      return this.isTransferenciaMacroPago(index)
+        ? ''
+        : 'Ingresa el nro de operacion o transaccion para conciliar la transferencia.';
     }
 
     if (!this.isNroOperacionValido(normalized)) {
@@ -400,7 +414,7 @@ export class RegistroDiarioComponent implements OnInit {
   formatPagos(registro: Registro): string {
     if (registro.pagosDetalle?.length) {
       return registro.pagosDetalle
-        .map(p => `${p.medioPago}: ${this.formatCurrency(p.monto)}${p.nroOperacion ? ` | Op ${p.nroOperacion}` : ''}${p.fechaTransferencia ? ` | Fecha transf. ${this.formatDateValue(p.fechaTransferencia)}` : ''}`)
+        .map(p => `${p.medioPago}: ${this.formatCurrency(p.monto)}${p.nroOperacion ? ` | Op ${p.nroOperacion}` : ''}${p.nroCuit ? ` | CUIT ${p.nroCuit}` : ''}${p.fechaTransferencia ? ` | Fecha transf. ${this.formatDateValue(p.fechaTransferencia)}` : ''}`)
         .join(' | ');
     }
     return registro.medioPago || 'EFECTIVO';
@@ -418,6 +432,7 @@ export class RegistroDiarioComponent implements OnInit {
       medioPago: [defaultMedio, Validators.required],
       monto: ['', [Validators.required, Validators.pattern(/^(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{0,2})?$/)]],
       nroOperacion: [''],
+      nroCuit: [''],
       fechaTransferencia: ['']
     });
   }
@@ -445,13 +460,16 @@ export class RegistroDiarioComponent implements OnInit {
       .filter(item => item.concepto && item.monto > 0);
   }
 
-  private normalizePagos(list: Array<{ medioPago?: string | null; monto?: number | string | null; nroOperacion?: string | null; fechaTransferencia?: string | null }>): RegistroPagoDetalle[] {
+  private normalizePagos(list: Array<{ medioPago?: string | null; monto?: number | string | null; nroOperacion?: string | null; nroCuit?: string | null; fechaTransferencia?: string | null }>): RegistroPagoDetalle[] {
     return (list || [])
       .map(item => ({
         medioPago: (item.medioPago || '').trim().toUpperCase(),
         monto: this.parseImporte(item.monto),
         nroOperacion: this.isTransferenciaMedio(item.medioPago)
           ? this.normalizeNroOperacion(item.nroOperacion)
+          : undefined,
+        nroCuit: this.isTransferenciaMacroMedio(item.medioPago)
+          ? this.normalizeNroCuit(item.nroCuit)
           : undefined,
         fechaTransferencia: this.isTransferenciaMacroMedio(item.medioPago)
           ? this.normalizeFechaTransferencia(item.fechaTransferencia)
@@ -514,6 +532,11 @@ export class RegistroDiarioComponent implements OnInit {
       .toUpperCase();
   }
 
+  private normalizeNroCuit(value?: string | null): string | undefined {
+    const normalized = String(value || '').replace(/\D/g, '').slice(0, 11);
+    return normalized || undefined;
+  }
+
   private isNroOperacionValido(value: string): boolean {
     return /^[A-Z0-9][A-Z0-9._/-]{5,39}$/.test(value);
   }
@@ -532,7 +555,7 @@ export class RegistroDiarioComponent implements OnInit {
   }
 
   private refreshInicioPorMedio() {
-    this.inicioPorMedio = this.caja.getInicioOperativoPorMedio(this.fechaOperativa);
+    this.inicioPorMedio = this.caja.getSaldoAcumuladoPorMedioAntesDe(this.fechaOperativa);
     const cierreBase = this.caja.getCierreBaseOperativa(this.fechaOperativa);
 
     this.cierreBaseFecha = cierreBase?.fecha || '';
@@ -541,12 +564,12 @@ export class RegistroDiarioComponent implements OnInit {
   }
 
   private refreshDisponibilidadEfectivo() {
-    const cajaDia = this.caja.getCajaPendienteParaCierre(this.fechaOperativa);
+    const cajaDia = this.caja.getCajaDiaria(this.fechaOperativa);
     this.movimientoEfectivoNetoDia = Number(cajaDia.saldo.efectivo || 0);
   }
 
   private refreshDisponibilidadPorMedio() {
-    const cajaDia = this.caja.getCajaPendienteParaCierre(this.fechaOperativa);
+    const cajaDia = this.caja.getCajaDiaria(this.fechaOperativa);
     const medios = this.collectMedios(cajaDia.ingresos, cajaDia.gastos);
 
     this.disponibilidadPorMedio = medios.map(medio => {

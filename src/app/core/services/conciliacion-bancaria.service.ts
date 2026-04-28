@@ -14,10 +14,26 @@ interface PagoTransferenciaCandidato {
   ordenPago: number;
   medioPago: string;
   monto: number;
-  nroOperacion: string;
+  nroOperacion?: string;
+  nroCuit?: string;
 }
 
 export interface OpcionConciliacionManual extends PagoTransferenciaCandidato {
+  motivoManual: string;
+  prioridadManual: number;
+}
+
+export interface OpcionMovimientoConciliacion {
+  movimientoId: string;
+  fecha: string;
+  createdAt: string;
+  descripcion: string;
+  monto: number;
+  banco?: string;
+  cuenta?: string;
+  nroOperacion?: string;
+  referenciaExterna?: string;
+  movimientoCuitDetectado?: string;
   motivoManual: string;
   prioridadManual: number;
 }
@@ -27,12 +43,15 @@ export interface ResultadoConciliacionBancaria {
   candidato?: PagoTransferenciaCandidato;
   motivo: string;
   origenConciliacion?: 'AUTOMATICA' | 'MANUAL';
+  movimientoCuitDetectado?: string;
+  cuitCompatible?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
 export class ConciliacionBancariaService {
   private readonly STORAGE_KEY = 'appreg.movimientos-bancarios';
   private readonly TABLE = 'movimientos_bancarios';
+  private readonly MATCH_WINDOW_DAYS = 15;
 
   private readonly repository: SyncCollectionRepository<MovimientoBancario>;
   private movimientos$ = new BehaviorSubject<MovimientoBancario[]>([]);
@@ -106,18 +125,83 @@ export class ConciliacionBancariaService {
       throw new Error('El pago seleccionado ya no existe para conciliacion manual.');
     }
 
+    this.linkMovimientoConPago(movimientoId, candidato);
+  }
+
+  aplicarConciliacionDesdePago(registroId: string, ordenPago: number, movimientoId: string) {
+    const pago = this.resolvePagoTransferencia(registroId, ordenPago);
+    if (!pago) {
+      throw new Error('El pago seleccionado ya no existe para conciliacion.');
+    }
+
+    this.linkMovimientoConPago(movimientoId, pago);
+  }
+
+  buildOpcionesMovimientosParaPago(registroId: string, ordenPago: number): OpcionMovimientoConciliacion[] {
+    const pago = this.resolvePagoTransferencia(registroId, ordenPago);
+    if (!pago) {
+      return [];
+    }
+
+    return this.getMovimientosSnapshot()
+      .filter(movimiento => this.isMovimientoDisponibleParaPago(movimiento, pago.registroId, pago.ordenPago))
+      .map(movimiento => this.buildMovimientoOptionForPago(pago, movimiento))
+      .filter((item): item is OpcionMovimientoConciliacion => Boolean(item))
+      .sort((a, b) => {
+        const byPriority = b.prioridadManual - a.prioridadManual;
+        if (byPriority !== 0) {
+          return byPriority;
+        }
+
+        return this.compareMovimientosDesc(
+          { id: a.movimientoId, fecha: a.fecha, createdAt: a.createdAt, descripcion: a.descripcion, monto: a.monto, tipo: 'CREDITO' },
+          { id: b.movimientoId, fecha: b.fecha, createdAt: b.createdAt, descripcion: b.descripcion, monto: b.monto, tipo: 'CREDITO' }
+        );
+      });
+  }
+
+  private linkMovimientoConPago(movimientoId: string, candidato: PagoTransferenciaCandidato) {
+    const movimiento = this.getMovimientosSnapshot().find(item => item.id === movimientoId);
+    if (!movimiento) {
+      throw new Error('El movimiento bancario ya no existe.');
+    }
+
+    if (!this.isMovimientoDisponibleParaPago(movimiento, candidato.registroId, candidato.ordenPago)) {
+      throw new Error('El movimiento bancario ya esta conciliado con otro pago.');
+    }
+
+    this.caja.syncRegistroPagoTransferencia(candidato.registroId, candidato.ordenPago, {
+      nroOperacion: movimiento.nroOperacion,
+      fechaTransferencia: movimiento.fecha
+    });
+
     const now = new Date().toISOString();
     const next = this.getMovimientosSnapshot().map(item => {
-      if (item.id !== movimientoId) {
+      const samePago = item.conciliadoRegistroId === candidato.registroId
+        && Number(item.conciliadoPagoOrden || 0) === Number(candidato.ordenPago || 0);
+
+      if (item.id === movimientoId) {
+        return {
+          ...item,
+          conciliacionEstado: 'CONCILIADO' as const,
+          conciliadoRegistroId: candidato.registroId,
+          conciliadoPagoOrden: candidato.ordenPago,
+          conciliadoAt: now,
+          ...this.buildProcesoAbiertoPatch(),
+          updatedAt: now
+        };
+      }
+
+      if (!samePago) {
         return item;
       }
 
       return {
         ...item,
-        conciliacionEstado: 'CONCILIADO' as const,
-        conciliadoRegistroId: candidato.registroId,
-        conciliadoPagoOrden: candidato.ordenPago,
-        conciliadoAt: now,
+        conciliacionEstado: 'PENDIENTE' as const,
+        conciliadoRegistroId: undefined,
+        conciliadoPagoOrden: undefined,
+        conciliadoAt: undefined,
         ...this.buildProcesoAbiertoPatch(),
         updatedAt: now
       };
@@ -251,6 +335,8 @@ export class ConciliacionBancariaService {
         return resultado.movimiento;
       });
 
+    this.syncPagosConciliados(next);
+
     if (changed) {
       this.updateMovimientos(next);
     } else {
@@ -266,10 +352,13 @@ export class ConciliacionBancariaService {
         const candidato = registro && movimiento.conciliadoPagoOrden
           ? this.buildCandidatosTransferencia().find(item => item.registroId === registro.id && item.ordenPago === movimiento.conciliadoPagoOrden)
           : undefined;
+        const movimientoCuitDetectado = this.resolveMovimientoCuit(movimiento);
 
         return {
           movimiento,
           candidato,
+          movimientoCuitDetectado,
+          cuitCompatible: candidato ? this.isCuitCompatible(movimiento, candidato) : undefined,
           motivo: this.buildMotivoResultado(movimiento, candidato),
           origenConciliacion: this.buildOrigenConciliacion(movimiento, candidato)
         };
@@ -292,7 +381,7 @@ export class ConciliacionBancariaService {
     if (movimiento.conciliacionEstado === 'CONCILIADO' && candidato) {
       const exacto = this.isExactMatch(movimiento, candidato);
       return exacto
-        ? `Match exacto por operacion, monto y fecha con ${candidato.nroRecibo || candidato.registroId}`
+        ? `Match exacto por operacion, monto, fecha${candidato.nroCuit ? ' y CUIT' : ''} con ${candidato.nroRecibo || candidato.registroId}`
         : `Conciliado manualmente con ${candidato.nroRecibo || candidato.registroId}`;
     }
 
@@ -302,10 +391,10 @@ export class ConciliacionBancariaService {
     }
 
     if (movimiento.conciliacionEstado === 'REVISAR') {
-      return 'Revisar: hay mas de un candidato o la operacion coincide pero no valida monto/fecha.';
+      return 'Revisar: hay mas de un candidato o la operacion coincide pero no valida monto/fecha/CUIT.';
     }
 
-    return 'Pendiente: sin coincidencia exacta por operacion, monto y fecha.';
+    return 'Pendiente: sin coincidencia exacta por operacion, monto, fecha y CUIT cuando aplica.';
   }
 
   private resolverConciliacionMovimiento(
@@ -336,7 +425,8 @@ export class ConciliacionBancariaService {
     const opCandidates = candidatos.filter(item => item.nroOperacion === nroOperacion);
     const exactCandidates = opCandidates.filter(item =>
       Math.abs(Number(item.monto || 0) - Number(movimiento.monto || 0)) <= 0.009
-      && this.daysDiff(item.fecha, movimiento.fecha) <= 3
+      && this.daysDiff(item.fecha, movimiento.fecha) <= this.MATCH_WINDOW_DAYS
+      && this.isCuitCompatible(movimiento, item)
       && !candidatosUsados.has(this.candidateKey(item))
     );
 
@@ -451,6 +541,17 @@ export class ConciliacionBancariaService {
     return this.buildProcesoAbiertoPatch();
   }
 
+  private syncPagosConciliados(movimientos: MovimientoBancario[]) {
+    movimientos
+      .filter(item => item.conciliacionEstado === 'CONCILIADO' && item.conciliadoRegistroId && item.conciliadoPagoOrden)
+      .forEach(item => {
+        this.caja.syncRegistroPagoTransferencia(String(item.conciliadoRegistroId), Number(item.conciliadoPagoOrden), {
+          nroOperacion: item.nroOperacion,
+          fechaTransferencia: item.fecha
+        });
+      });
+  }
+
   private buildProcesoAbiertoPatch(): Pick<MovimientoBancario, 'conciliacionProceso' | 'conciliacionCerradaAt' | 'conciliacionCerradaObservacion'> {
     return {
       conciliacionProceso: 'ABIERTO',
@@ -469,14 +570,48 @@ export class ConciliacionBancariaService {
       .filter(({ pago }) => this.isTransferencia(pago) && this.normalizeOperacion(pago.nroOperacion))
       .map(({ pago, index }) => ({
         registroId: registro.id,
-        fecha: registro.fecha || this.toDateKey(registro.createdAt),
+        fecha: this.resolveFechaCandidatoTransferencia(registro, pago),
         nroRecibo: String(registro.nroRecibo || ''),
         nombre: String(registro.nombre || ''),
         ordenPago: index + 1,
         medioPago: this.normalizeText(pago.medioPago),
         monto: Number(pago.monto || 0),
-        nroOperacion: this.normalizeOperacion(pago.nroOperacion)
+        nroOperacion: this.normalizeOperacion(pago.nroOperacion),
+        nroCuit: this.normalizeCuit(pago.nroCuit)
       }));
+  }
+
+  private resolvePagoTransferencia(registroId: string, ordenPago: number): PagoTransferenciaCandidato | null {
+    const targetRegistro = this.caja.getRegistrosSnapshot().find(item => item.id === registroId);
+    if (!targetRegistro) {
+      return null;
+    }
+
+    const pago = targetRegistro.pagosDetalle?.[Number(ordenPago || 0) - 1];
+    if (!pago || !this.isTransferencia(pago)) {
+      return null;
+    }
+
+    return {
+      registroId: targetRegistro.id,
+      fecha: this.resolveFechaCandidatoTransferencia(targetRegistro, pago),
+      nroRecibo: String(targetRegistro.nroRecibo || ''),
+      nombre: String(targetRegistro.nombre || ''),
+      ordenPago: Number(ordenPago || 0),
+      medioPago: this.normalizeText(pago.medioPago),
+      monto: Number(pago.monto || 0),
+      nroOperacion: this.normalizeOperacion(pago.nroOperacion) || undefined,
+      nroCuit: this.normalizeCuit(pago.nroCuit)
+    };
+  }
+
+  private resolveFechaCandidatoTransferencia(registro: Registro, pago: RegistroPagoDetalle): string {
+    const fechaTransferencia = String(pago.fechaTransferencia || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fechaTransferencia)) {
+      return fechaTransferencia;
+    }
+
+    return registro.fecha || this.toDateKey(registro.createdAt);
   }
 
   private isTransferencia(pago: RegistroPagoDetalle): boolean {
@@ -507,8 +642,14 @@ export class ConciliacionBancariaService {
     const exactOperacion = movimientoOperacion && movimientoOperacion === candidato.nroOperacion;
     const exactMonto = Math.abs(Number(candidato.monto || 0) - Number(movimiento.monto || 0)) <= 0.009;
     const diffDias = this.daysDiff(candidato.fecha, movimiento.fecha);
+    const cuitMovimiento = this.resolveMovimientoCuit(movimiento);
+    const exactCuit = Boolean(candidato.nroCuit && cuitMovimiento && candidato.nroCuit === cuitMovimiento);
 
     if (!exactOperacion) {
+      return null;
+    }
+
+    if (!this.isCuitCompatible(movimiento, candidato)) {
       return null;
     }
 
@@ -520,12 +661,17 @@ export class ConciliacionBancariaService {
       reasons.push('mismo monto');
     }
 
-    if (diffDias <= 3) {
+    if (diffDias <= this.MATCH_WINDOW_DAYS) {
       priority += 20;
-      reasons.push('fecha dentro de 3 dias');
-    } else if (diffDias <= 7) {
+      reasons.push(`fecha dentro de ${this.MATCH_WINDOW_DAYS} dias`);
+    } else if (diffDias <= 30) {
       priority += 10;
-      reasons.push('fecha dentro de 7 dias');
+      reasons.push('fecha dentro de 30 dias');
+    }
+
+    if (exactCuit) {
+      priority += 30;
+      reasons.push('mismo CUIT');
     }
 
     if (priority === 0) {
@@ -539,10 +685,121 @@ export class ConciliacionBancariaService {
     };
   }
 
+  private buildMovimientoOptionForPago(
+    pago: PagoTransferenciaCandidato,
+    movimiento: MovimientoBancario
+  ): OpcionMovimientoConciliacion | null {
+    if (movimiento.tipo !== 'CREDITO') {
+      return null;
+    }
+
+    const reasons: string[] = [];
+    let priority = 0;
+    const movimientoOperacion = this.normalizeOperacion(movimiento.nroOperacion);
+    const exactOperacion = Boolean(pago.nroOperacion && movimientoOperacion && pago.nroOperacion === movimientoOperacion);
+    const exactMonto = Math.abs(Number(pago.monto || 0) - Number(movimiento.monto || 0)) <= 0.009;
+    const diffDias = this.daysDiff(pago.fecha, movimiento.fecha);
+    const movimientoCuitDetectado = this.resolveMovimientoCuit(movimiento);
+    const exactCuit = Boolean(pago.nroCuit && movimientoCuitDetectado && pago.nroCuit === movimientoCuitDetectado);
+
+    if (!this.isCuitCompatible(movimiento, pago)) {
+      return null;
+    }
+
+    if (exactOperacion) {
+      priority += 100;
+      reasons.push('misma operacion');
+    } else if (!pago.nroOperacion && movimientoOperacion) {
+      priority += 15;
+      reasons.push('aporta operacion bancaria');
+    }
+
+    if (exactMonto) {
+      priority += 40;
+      reasons.push('mismo monto');
+    }
+
+    if (diffDias <= this.MATCH_WINDOW_DAYS) {
+      priority += 20;
+      reasons.push(`fecha dentro de ${this.MATCH_WINDOW_DAYS} dias`);
+    } else if (diffDias <= 30) {
+      priority += 10;
+      reasons.push('fecha dentro de 30 dias');
+    }
+
+    if (exactCuit) {
+      priority += 30;
+      reasons.push('mismo CUIT');
+    }
+
+    const elegible = exactOperacion || (exactMonto && diffDias <= 30) || (exactMonto && exactCuit) || (exactCuit && diffDias <= this.MATCH_WINDOW_DAYS);
+    if (!elegible || priority <= 0) {
+      return null;
+    }
+
+    return {
+      movimientoId: movimiento.id,
+      fecha: movimiento.fecha,
+      createdAt: movimiento.createdAt,
+      descripcion: movimiento.descripcion,
+      monto: Number(movimiento.monto || 0),
+      banco: movimiento.banco,
+      cuenta: movimiento.cuenta,
+      nroOperacion: movimientoOperacion || undefined,
+      referenciaExterna: movimiento.referenciaExterna,
+      movimientoCuitDetectado,
+      motivoManual: reasons.join(', '),
+      prioridadManual: priority
+    };
+  }
+
+  private isMovimientoDisponibleParaPago(
+    movimiento: MovimientoBancario,
+    registroId: string,
+    ordenPago: number
+  ): boolean {
+    if (movimiento.tipo !== 'CREDITO') {
+      return false;
+    }
+
+    if (movimiento.conciliacionEstado !== 'CONCILIADO') {
+      return true;
+    }
+
+    return movimiento.conciliadoRegistroId === registroId
+      && Number(movimiento.conciliadoPagoOrden || 0) === Number(ordenPago || 0);
+  }
+
   private isExactMatch(movimiento: MovimientoBancario, candidato: PagoTransferenciaCandidato): boolean {
     return this.normalizeOperacion(movimiento.nroOperacion) === candidato.nroOperacion
       && Math.abs(Number(candidato.monto || 0) - Number(movimiento.monto || 0)) <= 0.009
-      && this.daysDiff(candidato.fecha, movimiento.fecha) <= 3;
+      && this.isCuitCompatible(movimiento, candidato)
+      && this.daysDiff(candidato.fecha, movimiento.fecha) <= this.MATCH_WINDOW_DAYS;
+  }
+
+  private isCuitCompatible(movimiento: MovimientoBancario, candidato: PagoTransferenciaCandidato): boolean {
+    const movimientoCuit = this.resolveMovimientoCuit(movimiento);
+    if (!candidato.nroCuit || !movimientoCuit) {
+      return true;
+    }
+
+    return candidato.nroCuit === movimientoCuit;
+  }
+
+  private resolveMovimientoCuit(movimiento: MovimientoBancario): string | undefined {
+    return this.normalizeCuit(
+      `${String(movimiento.descripcion || '')} ${String(movimiento.referenciaExterna || '')} ${String(movimiento.cuenta || '')}`
+    );
+  }
+
+  private normalizeCuit(value?: string): string | undefined {
+    const match = String(value || '').match(/\b\d{2}[-\s.]?\d{8}[-\s.]?\d\b|\b\d{11}\b/);
+    if (!match?.[0]) {
+      return undefined;
+    }
+
+    const digits = match[0].replace(/\D/g, '').slice(0, 11);
+    return digits || undefined;
   }
 
   private daysDiff(a: string, b: string): number {

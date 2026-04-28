@@ -68,7 +68,7 @@
     <div class="table-head">
       <div>
         <h4>Resultado de conciliacion</h4>
-        <small class="table-head-meta">El match automatico exige coincidencia exacta por operacion, monto e intervalo de fecha de hasta 3 dias. Cuando confirmas el cruce, puedes cerrar el proceso manualmente y dejarlo auditado.</small>
+        <small class="table-head-meta">El match automatico exige coincidencia exacta por operacion, monto e intervalo de fecha de hasta 15 dias, y tambien considera el CUIT cuando el dato esta disponible. Cuando confirmas el cruce, puedes cerrar el proceso manualmente y dejarlo auditado.</small>
       </div>
       <span class="chip" [class.ok]="kpiProcesosAbiertos === 0" [class.warn]="kpiProcesosAbiertos > 0">
         {{ kpiProcesosAbiertos }} proceso(s) abiertos
@@ -137,6 +137,7 @@
                 <small class="control-note" *ngIf="item.movimiento.banco || item.movimiento.cuenta">
                   {{ item.movimiento.banco || 'SIN BANCO' }}<span *ngIf="item.movimiento.cuenta"> | {{ item.movimiento.cuenta }}</span>
                 </small>
+                <small class="control-note" *ngIf="item.movimientoCuitDetectado">CUIT detectado: {{ item.movimientoCuitDetectado }}</small>
               </td>
               <td><small>{{ item.movimiento.nroOperacion || '-' }}</small></td>
               <td class="text-end" [class.text-emerald]="item.movimiento.tipo === 'CREDITO'" [class.text-danger]="item.movimiento.tipo === 'DEBITO'">
@@ -166,6 +167,12 @@
                   <strong>{{ item.candidato.nroRecibo || item.candidato.registroId }}</strong>
                   <small class="control-note">{{ item.candidato.nombre }} | {{ item.candidato.fecha | date:'dd/MM/yyyy' }} | Pago {{ item.candidato.ordenPago }}</small>
                   <small class="control-note">Transferencia a Macro: {{ item.candidato.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</small>
+                  <small class="control-note" *ngIf="item.candidato.nroCuit || item.movimientoCuitDetectado">
+                    CUIT pago: {{ item.candidato.nroCuit || 'Sin CUIT' }}
+                    <span *ngIf="item.movimientoCuitDetectado"> | CUIT banco: {{ item.movimientoCuitDetectado }}</span>
+                    <span *ngIf="item.cuitCompatible === true"> | Coincide</span>
+                    <span *ngIf="item.cuitCompatible === false"> | No coincide</span>
+                  </small>
                 </ng-container>
                 <ng-template #sinMatch>
                   <span class="text-secondary">Sin match aplicado</span>
@@ -212,13 +219,13 @@
                 <div class="manual-panel">
                   <div>
                     <strong>Conciliacion manual asistida</strong>
-                    <small class="control-note">Se muestran solo candidatos con la misma operacion; luego se priorizan por monto y cercania de fecha.</small>
+                    <small class="control-note">Se muestran solo candidatos con la misma operacion; luego se priorizan por CUIT, monto y cercania de fecha.</small>
                   </div>
 
                   <div class="manual-controls" *ngIf="(opcionesManuales[item.movimiento.id] || []).length; else noOptions">
                     <select class="form-select form-select-sm" [(ngModel)]="seleccionManual[item.movimiento.id]">
                       <option *ngFor="let option of opcionesManuales[item.movimiento.id]" [ngValue]="buildManualValue(option)">
-                        {{ option.nroRecibo || option.registroId }} | {{ option.nombre }} | {{ option.fecha | date:'dd/MM/yyyy' }} | Transferencia a Macro: {{ option.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }} | {{ option.motivoManual }}
+                        {{ option.nroRecibo || option.registroId }} | {{ option.nombre }} | {{ option.fecha | date:'dd/MM/yyyy' }} | Transferencia a Macro: {{ option.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }} | CUIT {{ option.nroCuit || 's/d' }} | {{ option.motivoManual }}
                       </option>
                     </select>
                     <button type="button" class="btn btn-sm btn-primary" (click)="aplicarConciliacionManual(item.movimiento.id)">Aplicar</button>
