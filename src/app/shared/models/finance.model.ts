@@ -128,9 +128,14 @@ export interface CierreCaja {
 
 export interface MovimientoBancario {
   id: string;
+  importKey?: string;
   fecha: string;
   createdAt: string;
   updatedAt?: string;
+  primeraImportacionAt?: string;
+  ultimaImportacionAt?: string;
+  importBatchId?: string;
+  vecesImportado?: number;
   banco?: string;
   cuenta?: string;
   descripcion: string;
@@ -146,6 +151,34 @@ export interface MovimientoBancario {
   conciliacionProceso?: 'ABIERTO' | 'CERRADO';
   conciliacionCerradaAt?: string;
   conciliacionCerradaObservacion?: string;
+}
+
+export interface ConciliacionBancariaHistorial {
+  id: string;
+  movimientoId: string;
+  movimientoImportKey?: string;
+  evento:
+    | 'IMPORTADO'
+    | 'REIMPORTADO'
+    | 'CONCILIACION_AUTOMATICA'
+    | 'CONCILIACION_MANUAL'
+    | 'LIBERACION'
+    | 'CIERRE_PROCESO'
+    | 'REAPERTURA_PROCESO'
+    | 'ELIMINACION';
+  createdAt: string;
+  registroId?: string;
+  ordenPago?: number;
+  observacion?: string;
+  movimientoFecha: string;
+  movimientoDescripcion: string;
+  movimientoMonto: number;
+  movimientoTipo: 'CREDITO' | 'DEBITO';
+  movimientoNroOperacion?: string;
+  movimientoCuitDetectado?: string;
+  movimientoBanco?: string;
+  movimientoCuenta?: string;
+  payload?: Record<string, unknown>;
 }
 
 export interface ConfiguracionCaja {

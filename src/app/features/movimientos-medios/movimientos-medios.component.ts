@@ -5,7 +5,7 @@ import { Subject, auditTime, merge, takeUntil } from 'rxjs';
 import { CajaService } from '../../core/services/caja.service';
 import { ConfigService } from '../../core/services/config.service';
 import { ConciliacionBancariaService, OpcionMovimientoConciliacion } from '../../core/services/conciliacion-bancaria.service';
-import { CierreCaja, Gasto, IngresoCaja, Registro } from '../../shared/models/finance.model';
+import { CierreCaja, Gasto, IngresoCaja, MovimientoBancario, Registro } from '../../shared/models/finance.model';
 
 interface ConciliacionPagoContexto {
   registroId: string;
@@ -75,6 +75,7 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
   seleccionMovimientoConciliacion: Record<string, string> = {};
   private pagosConciliados = new Set<string>();
   private estadosPorOperacion = new Map<string, 'PENDIENTE' | 'REVISAR'>();
+  private movimientosConciliadosPorPago = new Map<string, MovimientoBancario>();
 
   private readonly destroy$ = new Subject<void>();
 
@@ -210,13 +211,78 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
   puedeConciliarDesdeFila(item: MovimientoLinea): boolean {
     return item.origen === 'REGISTRO'
       && this.isTransferenciaMacro(item.medioPago)
-      && Boolean(item.conciliacionPago)
-      && item.estadoConciliacionVisual !== 'CONCILIADO';
+      && Boolean(item.conciliacionPago);
   }
 
   getOpcionesConciliacion(item: MovimientoLinea): OpcionMovimientoConciliacion[] {
     const key = this.getConciliacionPagoKey(item);
     return key ? this.opcionesConciliacionPago[key] || [] : [];
+  }
+
+  getMovimientoConciliado(item: MovimientoLinea): MovimientoBancario | undefined {
+    const key = this.getConciliacionPagoKey(item);
+    return key ? this.movimientosConciliadosPorPago.get(key) : undefined;
+  }
+
+  getBotonConciliacionLabel(item: MovimientoLinea): string {
+    return this.getMovimientoConciliado(item) ? 'Cambiar match' : 'Buscar coincidencias';
+  }
+
+  getMovimientoCuitDetectado(movimiento?: MovimientoBancario): string {
+    const match = String(
+      `${String(movimiento?.descripcion || '')} ${String(movimiento?.referenciaExterna || '')} ${String(movimiento?.cuenta || '')}`
+    ).match(/\b\d{2}[-\s.]?\d{8}[-\s.]?\d\b|\b\d{11}\b/);
+
+    return match?.[0]?.replace(/\D/g, '').slice(0, 11) || '';
+  }
+
+  isOperacionCoincidente(item: MovimientoLinea): boolean {
+    const movimiento = this.getMovimientoConciliado(item);
+    const pagoOperacion = this.normalizeOperacion(item.conciliacionPago?.nroOperacion);
+    const bancoOperacion = this.normalizeOperacion(movimiento?.nroOperacion);
+    return Boolean(pagoOperacion && bancoOperacion && pagoOperacion === bancoOperacion);
+  }
+
+  isFechaCoincidente(item: MovimientoLinea): boolean {
+    const movimiento = this.getMovimientoConciliado(item);
+    const fechaPago = String(item.conciliacionPago?.fechaTransferencia || '').trim();
+    const fechaBanco = String(movimiento?.fecha || '').trim();
+    return Boolean(fechaPago && fechaBanco && fechaPago === fechaBanco);
+  }
+
+  isCuitCoincidente(item: MovimientoLinea): boolean {
+    const movimiento = this.getMovimientoConciliado(item);
+    const pagoCuit = this.normalizeCuit(item.conciliacionPago?.nroCuit);
+    const bancoCuit = this.normalizeCuit(this.getMovimientoCuitDetectado(movimiento));
+    return Boolean(pagoCuit && bancoCuit && pagoCuit === bancoCuit);
+  }
+
+  isMontoCoincidente(item: MovimientoLinea): boolean {
+    const movimiento = this.getMovimientoConciliado(item);
+    return Boolean(movimiento) && Math.abs(Number(item.monto || 0) - Number(movimiento?.monto || 0)) <= 0.009;
+  }
+
+  liberarConciliacionDesdeFila(item: MovimientoLinea) {
+    const movimiento = this.getMovimientoConciliado(item);
+    if (!movimiento) {
+      return;
+    }
+
+    const confirmado = window.confirm(
+      `Se va a liberar la conciliacion bancaria del pago ${item.conciliacionPago?.ordenPago || ''}. Esta accion dejara el pago nuevamente pendiente. Deseas continuar?`
+    );
+    if (!confirmado) {
+      return;
+    }
+
+    this.conciliacion.liberarConciliacion(movimiento.id);
+    const key = this.getConciliacionPagoKey(item);
+    if (key) {
+      this.panelConciliacionAbierto[key] = false;
+    }
+    this.conciliacionMessage = 'Conciliacion liberada desde movimientos por medio.';
+    this.conciliacionError = '';
+    this.refresh();
   }
 
   get totalPages(): number {
@@ -238,6 +304,7 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
   private refresh() {
     this.pagosConciliados = this.buildPagosConciliadosSet();
     this.estadosPorOperacion = this.buildEstadosPorOperacionMap();
+    this.movimientosConciliadosPorPago = this.buildMovimientosConciliadosPorPago();
 
     const movimientosHastaFecha = this.buildMovimientosHastaFecha();
     const movimientosVisibles = movimientosHastaFecha.filter(item => this.isWithinRange(item.fecha));
@@ -337,6 +404,17 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
     );
   }
 
+  private buildMovimientosConciliadosPorPago(): Map<string, MovimientoBancario> {
+    return this.conciliacion.getMovimientosSnapshot().reduce((acc, item) => {
+      if (item.conciliacionEstado !== 'CONCILIADO' || !item.conciliadoRegistroId || !item.conciliadoPagoOrden) {
+        return acc;
+      }
+
+      acc.set(this.buildPagoKey(String(item.conciliadoRegistroId || ''), Number(item.conciliadoPagoOrden || 0)), item);
+      return acc;
+    }, new Map<string, MovimientoBancario>());
+  }
+
   private buildEstadosPorOperacionMap(): Map<string, 'PENDIENTE' | 'REVISAR'> {
     return this.conciliacion.getMovimientosSnapshot().reduce((acc, item) => {
       const operacion = this.normalizeOperacion(item.nroOperacion);
@@ -397,7 +475,8 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
 
     const opciones = this.conciliacion.buildOpcionesMovimientosParaPago(contexto.registroId, contexto.ordenPago);
     this.opcionesConciliacionPago[key] = opciones;
-    this.seleccionMovimientoConciliacion[key] = this.seleccionMovimientoConciliacion[key] || opciones[0]?.movimientoId || '';
+    const movimientoActual = this.getMovimientoConciliado(item);
+    this.seleccionMovimientoConciliacion[key] = movimientoActual?.id || this.seleccionMovimientoConciliacion[key] || opciones[0]?.movimientoId || '';
   }
 
   private isTransferenciaMacro(value?: string): boolean {
@@ -630,6 +709,10 @@ export class MovimientosMediosComponent implements OnInit, OnDestroy {
       .replace(/[^A-Z0-9._/-]/gi, '')
       .trim()
       .toUpperCase();
+  }
+
+  private normalizeCuit(value?: string): string {
+    return String(value || '').replace(/\D/g, '').slice(0, 11);
   }
 
   private normalizeText(value?: string): string {

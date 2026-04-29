@@ -133,11 +133,11 @@
             <tr>
               <td>{{ item.movimiento.fecha | date:'dd/MM/yyyy' }}</td>
               <td>
-                <strong>{{ item.movimiento.descripcion }}</strong>
+                <strong>{{ buildDescripcionMovimiento(item) }}</strong>
                 <small class="control-note" *ngIf="item.movimiento.banco || item.movimiento.cuenta">
                   {{ item.movimiento.banco || 'SIN BANCO' }}<span *ngIf="item.movimiento.cuenta"> | {{ item.movimiento.cuenta }}</span>
                 </small>
-                <small class="control-note" *ngIf="item.movimientoCuitDetectado">CUIT detectado: {{ item.movimientoCuitDetectado }}</small>
+                <small class="control-note" *ngIf="item.movimientoCuitDetectado">{{ getDescripcionCuitLabel(item.movimiento) }}: {{ item.movimientoCuitDetectado }}</small>
               </td>
               <td><small>{{ item.movimiento.nroOperacion || '-' }}</small></td>
               <td class="text-end" [class.text-emerald]="item.movimiento.tipo === 'CREDITO'" [class.text-danger]="item.movimiento.tipo === 'DEBITO'">

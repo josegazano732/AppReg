@@ -203,6 +203,26 @@ export class ConciliacionBancariaComponent implements OnInit {
     return item.movimiento.id;
   }
 
+  buildDescripcionMovimiento(item: ResultadoConciliacionBancaria): string {
+    const descripcion = this.normalizeDescripcionVisual(item.movimiento.descripcion);
+    return descripcion || 'SIN DESCRIPCION';
+  }
+
+  getDescripcionCuitLabel(movimiento: MovimientoBancario): string {
+    const context = this.normalizeOperacion([
+      movimiento.banco || '',
+      movimiento.descripcion || '',
+      movimiento.referenciaExterna || '',
+      movimiento.cuenta || ''
+    ].join(' '));
+
+    if (context.includes('ING')) {
+      return 'CUIT ING';
+    }
+
+    return 'CUIT contraparte';
+  }
+
   isProcesoCerrado(movimiento: MovimientoBancario): boolean {
     return movimiento.conciliacionProceso === 'CERRADO' && Boolean(movimiento.conciliacionCerradaAt);
   }
@@ -389,12 +409,21 @@ export class ConciliacionBancariaComponent implements OnInit {
       return null;
     }
 
+    const rawContextParts = [
+      ...previousRelevant.filter(line => !this.isStandaloneAmountLine(line)),
+      currentRest,
+      ...nextRelevant.filter(line => !this.isStandaloneAmountLine(line))
+    ];
+    const detectedCuit = this.extractDetectedCuit(rawContextParts.join(' '));
     const descriptionParts = [
       ...previousRelevant.filter(line => !this.isStandaloneAmountLine(line) && !this.isMostlyNumericLine(line)),
       currentRest,
       ...nextRelevant.filter(line => !this.isStandaloneAmountLine(line) && !this.isMostlyNumericLine(line))
     ];
-    const descripcion = this.cleanAccountStatementDescription(descriptionParts.join(' '), transactionId, amountToken);
+    const descripcion = this.appendDetectedCuit(
+      this.cleanAccountStatementDescription(descriptionParts.join(' '), transactionId, amountToken),
+      detectedCuit
+    );
 
     return {
       fecha,
@@ -463,7 +492,10 @@ export class ConciliacionBancariaComponent implements OnInit {
       .replace(/\s+/g, ' ')
       .trim();
     const nroOperacion = this.extractOperacionFromStatement(bodyWithoutAmount);
-    const descripcion = this.cleanStatementDescription(bodyWithoutAmount, nroOperacion);
+    const descripcion = this.appendDetectedCuit(
+      this.cleanStatementDescription(bodyWithoutAmount, nroOperacion),
+      this.extractDetectedCuit(bodyWithoutAmount)
+    );
     const tipo = this.detectStatementTipo(body, amountToken.value);
 
     return {
@@ -638,6 +670,29 @@ export class ConciliacionBancariaComponent implements OnInit {
       .trim();
 
     return cleaned;
+  }
+
+  private extractDetectedCuit(value: string): string | undefined {
+    const match = String(value || '').match(/\b\d{2}[-\s.]?\d{8}[-\s.]?\d\b|\b\d{11}\b/);
+    if (!match?.[0]) {
+      return undefined;
+    }
+
+    const digits = match[0].replace(/\D/g, '').slice(0, 11);
+    return digits || undefined;
+  }
+
+  private appendDetectedCuit(descripcion: string, cuit?: string): string {
+    const base = String(descripcion || '').trim();
+    if (!cuit) {
+      return base;
+    }
+
+    if (base.includes(cuit) || base.includes(`CUIT ${cuit}`)) {
+      return base;
+    }
+
+    return base ? `${base} | CUIT ${cuit}` : `CUIT ${cuit}`;
   }
 
   private extractExternalReference(value: string): string | undefined {
@@ -839,5 +894,21 @@ export class ConciliacionBancariaComponent implements OnInit {
       .replace(/[^A-Z0-9._/-]/gi, '')
       .trim()
       .toUpperCase();
+  }
+
+  private normalizeDescripcionVisual(value?: string): string {
+    const sinCuit = String(value || '')
+      .replace(/\|\s*CUIT\s*\d{11}/gi, ' ')
+      .replace(/\bCUIT\s*\d{11}\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const segmentos = sinCuit
+      .split('|')
+      .map(item => item.trim())
+      .filter(Boolean);
+
+    const unicos = segmentos.filter((segmento, index) => segmentos.findIndex(item => this.normalizeOperacion(item) === this.normalizeOperacion(segmento)) === index);
+    return unicos.join(' | ').trim();
   }
 }

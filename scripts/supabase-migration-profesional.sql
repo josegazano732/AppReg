@@ -101,9 +101,14 @@ alter table public.cierres add column if not exists "updatedAt" timestamptz not 
 
 create table if not exists public.movimientos_bancarios (
 	id text primary key,
+	import_key text,
 	fecha date not null,
 	"createdAt" timestamptz not null,
 	"updatedAt" timestamptz not null default now(),
+	primera_importacion_at timestamptz,
+	ultima_importacion_at timestamptz,
+	import_batch_id text,
+	veces_importado integer not null default 1,
 	banco text,
 	cuenta text,
 	descripcion text not null,
@@ -127,9 +132,38 @@ create table if not exists public.movimientos_bancarios (
 );
 
 alter table public.movimientos_bancarios add column if not exists "updatedAt" timestamptz not null default now();
+alter table public.movimientos_bancarios add column if not exists import_key text;
+alter table public.movimientos_bancarios add column if not exists primera_importacion_at timestamptz;
+alter table public.movimientos_bancarios add column if not exists ultima_importacion_at timestamptz;
+alter table public.movimientos_bancarios add column if not exists import_batch_id text;
+alter table public.movimientos_bancarios add column if not exists veces_importado integer not null default 1;
 alter table public.movimientos_bancarios add column if not exists conciliacion_proceso text not null default 'ABIERTO';
 alter table public.movimientos_bancarios add column if not exists conciliacion_cerrada_at timestamptz;
 alter table public.movimientos_bancarios add column if not exists conciliacion_cerrada_observacion text;
+
+create table if not exists public.conciliacion_bancaria_historial (
+	id text primary key,
+	movimiento_id text not null,
+	movimiento_import_key text,
+	evento text not null,
+	"createdAt" timestamptz not null,
+	registro_id text,
+	orden_pago integer,
+	observacion text,
+	movimiento_fecha date not null,
+	movimiento_descripcion text not null,
+	movimiento_monto numeric not null,
+	movimiento_tipo text not null,
+	movimiento_nro_operacion text,
+	movimiento_cuit_detectado text,
+	movimiento_banco text,
+	movimiento_cuenta text,
+	payload jsonb,
+	constraint chk_conciliacion_bancaria_historial_evento check (evento in ('IMPORTADO', 'REIMPORTADO', 'CONCILIACION_AUTOMATICA', 'CONCILIACION_MANUAL', 'LIBERACION', 'CIERRE_PROCESO', 'REAPERTURA_PROCESO', 'ELIMINACION')),
+	constraint chk_conciliacion_bancaria_historial_tipo check (movimiento_tipo in ('CREDITO', 'DEBITO')),
+	constraint fk_conciliacion_bancaria_historial_registro
+		foreign key (registro_id) references public.registros(id) on update cascade on delete set null
+);
 
 create table if not exists public.config_conceptos (
 	id bigserial primary key,
@@ -184,6 +218,12 @@ begin
 		alter table public.movimientos_bancarios
 			add constraint chk_movimientos_bancarios_proceso
 			check (conciliacion_proceso in ('ABIERTO', 'CERRADO'));
+	end if;
+
+	if not exists (select 1 from pg_constraint where conname = 'uq_movimientos_bancarios_import_key') then
+		alter table public.movimientos_bancarios
+			add constraint uq_movimientos_bancarios_import_key
+			unique (import_key);
 	end if;
 
 	if not exists (select 1 from pg_trigger where tgname = 'trg_registros_updated_at') then
@@ -537,8 +577,10 @@ create index if not exists idx_cierres_fecha on public.cierres (fecha);
 create index if not exists idx_cierres_created_at on public.cierres ("createdAt");
 create index if not exists idx_cierres_updated_at on public.cierres ("updatedAt");
 create index if not exists idx_movimientos_bancarios_fecha on public.movimientos_bancarios (fecha);
+create unique index if not exists idx_movimientos_bancarios_import_key on public.movimientos_bancarios (import_key) where import_key is not null;
 create index if not exists idx_movimientos_bancarios_nro_operacion on public.movimientos_bancarios (nro_operacion);
 create index if not exists idx_movimientos_bancarios_estado on public.movimientos_bancarios (conciliacion_estado);
+create index if not exists idx_movimientos_bancarios_ultima_importacion_at on public.movimientos_bancarios (ultima_importacion_at);
 create index if not exists idx_registro_conceptos_detalle_concepto_id on public.registro_conceptos_detalle (concepto_id);
 create index if not exists idx_registro_pagos_detalle_medio_pago_id on public.registro_pagos_detalle (medio_pago_id);
 create index if not exists idx_registro_pagos_detalle_medio_pago on public.registro_pagos_detalle (medio_pago);
@@ -546,3 +588,8 @@ create index if not exists idx_registro_pagos_detalle_nro_operacion on public.re
 create index if not exists idx_cierre_registros_registro_id on public.cierre_registros (registro_id);
 create index if not exists idx_cierre_ingresos_ingreso_id on public.cierre_ingresos (ingreso_id);
 create index if not exists idx_cierre_gastos_gasto_id on public.cierre_gastos (gasto_id);
+create index if not exists idx_conciliacion_bancaria_historial_movimiento_id on public.conciliacion_bancaria_historial (movimiento_id);
+create index if not exists idx_conciliacion_bancaria_historial_movimiento_import_key on public.conciliacion_bancaria_historial (movimiento_import_key);
+create index if not exists idx_conciliacion_bancaria_historial_registro_id on public.conciliacion_bancaria_historial (registro_id);
+create index if not exists idx_conciliacion_bancaria_historial_evento on public.conciliacion_bancaria_historial (evento);
+create index if not exists idx_conciliacion_bancaria_historial_created_at on public.conciliacion_bancaria_historial ("createdAt");

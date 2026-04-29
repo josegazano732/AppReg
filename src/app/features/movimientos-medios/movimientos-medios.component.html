@@ -87,11 +87,11 @@
         <table class="table align-middle mb-0 compact-table">
           <thead>
             <tr>
-              <th>Fecha operativa</th>
               <th>Fecha y hora</th>
               <th>Medio</th>
               <th>Origen</th>
               <th>Detalle</th>
+              <th class="col-conciliacion">Conciliacion banco</th>
               <th class="col-referencia">Ref.</th>
               <th class="text-end">Ingreso</th>
               <th class="text-end">Egreso</th>
@@ -106,7 +106,6 @@
                 [class.row-transferencia-pendiente]="item.estadoConciliacionVisual === 'PENDIENTE'"
                 [class.row-transferencia-revisar]="item.estadoConciliacionVisual === 'REVISAR'"
               >
-                <td>{{ item.fecha | date:'dd/MM/yyyy' }}</td>
                 <td>{{ item.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td>
                   <span class="chip small neutral">{{ item.medioPago }}</span>
@@ -122,10 +121,61 @@
                 <td>
                   <div>{{ item.detalle }}</div>
 
-                  <div *ngIf="puedeConciliarDesdeFila(item)" class="conciliacion-inline mt-2">
-                    <button type="button" class="btn btn-outline-primary btn-sm" (click)="toggleConciliacionPanel(item)">
-                      {{ panelConciliacionAbierto[getConciliacionPagoKey(item)] ? 'Ocultar coincidencias' : 'Conciliar desde aqui' }}
-                    </button>
+                  <small *ngIf="item.conciliacionPago?.fechaTransferencia" class="conciliacion-resumen d-block mt-1">
+                    Fecha banco persistida:
+                    <span [class.conciliacion-match]="isFechaCoincidente(item)">{{ item.conciliacionPago?.fechaTransferencia | date:'dd/MM/yyyy' }}</span>
+                  </small>
+
+                  <small *ngIf="item.conciliacionPago?.nroOperacion" class="conciliacion-resumen d-block">
+                    Operacion persistida:
+                    <span [class.conciliacion-match]="isOperacionCoincidente(item)">{{ item.conciliacionPago?.nroOperacion }}</span>
+                  </small>
+
+                  <small *ngIf="item.conciliacionPago?.nroCuit" class="conciliacion-resumen d-block">
+                    CUIT persistido:
+                    <span [class.conciliacion-match]="isCuitCoincidente(item)">{{ item.conciliacionPago?.nroCuit }}</span>
+                  </small>
+                </td>
+
+                <td class="col-conciliacion">
+                  <ng-container *ngIf="puedeConciliarDesdeFila(item); else sinConciliacionAplicable">
+                    <div *ngIf="getMovimientoConciliado(item) as movimientoBanco; else sinMovimientoConciliado" class="conciliacion-estado-block">
+                      <span class="chip small ok">Vinculado</span>
+                      <small class="conciliacion-resumen d-block mt-1">
+                        Fecha banco <span [class.conciliacion-match]="isFechaCoincidente(item)">{{ movimientoBanco.fecha | date:'dd/MM/yyyy' }}</span>
+                        <span *ngIf="movimientoBanco.nroOperacion"> | Op <span [class.conciliacion-match]="isOperacionCoincidente(item)">{{ movimientoBanco.nroOperacion }}</span></span>
+                      </small>
+                      <small *ngIf="getMovimientoCuitDetectado(movimientoBanco)" class="conciliacion-resumen d-block">
+                        CUIT detectado: <span [class.conciliacion-match]="isCuitCoincidente(item)">{{ getMovimientoCuitDetectado(movimientoBanco) }}</span>
+                      </small>
+                      <small class="conciliacion-resumen d-block">
+                        {{ movimientoBanco.banco || getMovimientoCuitDetectado(movimientoBanco) || 'SIN DATO' }}<span *ngIf="movimientoBanco.cuenta"> | {{ movimientoBanco.cuenta }}</span>
+                      </small>
+                      <small class="conciliacion-resumen d-block">{{ movimientoBanco.descripcion }}</small>
+                    </div>
+
+                    <ng-template #sinMovimientoConciliado>
+                      <div class="conciliacion-estado-block">
+                        <span class="chip small neutral">Sin vinculo</span>
+                        <small class="conciliacion-resumen d-block mt-1">Todavia no hay movimiento bancario aplicado a este pago.</small>
+                      </div>
+                    </ng-template>
+
+                    <div class="conciliacion-inline mt-2">
+                    <div class="conciliacion-action-row">
+                      <button type="button" class="btn btn-outline-primary btn-sm" (click)="toggleConciliacionPanel(item)">
+                        {{ panelConciliacionAbierto[getConciliacionPagoKey(item)] ? 'Ocultar coincidencias' : getBotonConciliacionLabel(item) }}
+                      </button>
+
+                      <button
+                        *ngIf="getMovimientoConciliado(item)"
+                        type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        (click)="liberarConciliacionDesdeFila(item)"
+                      >
+                        Liberar
+                      </button>
+                    </div>
 
                     <div *ngIf="panelConciliacionAbierto[getConciliacionPagoKey(item)]" class="conciliacion-inline-panel mt-2">
                       <small class="conciliacion-inline-copy">
@@ -149,10 +199,15 @@
                         (click)="aplicarConciliacionDesdeMovimiento(item)"
                         [disabled]="!getOpcionesConciliacion(item).length"
                       >
-                        Confirmar conciliacion
+                        {{ getMovimientoConciliado(item) ? 'Guardar cambio de match' : 'Confirmar conciliacion' }}
                       </button>
                     </div>
                   </div>
+                  </ng-container>
+
+                  <ng-template #sinConciliacionAplicable>
+                    <span class="text-secondary">No aplica</span>
+                  </ng-template>
                 </td>
                 <td class="col-referencia">
                   <div class="reference-cell" [title]="item.referencia">
@@ -162,11 +217,11 @@
                     </button>
                   </div>
                 </td>
-                <td class="text-end text-emerald">
+                <td class="text-end text-emerald" [class.conciliacion-match-cell]="isMontoCoincidente(item)">
                   <ng-container *ngIf="item.monto > 0">{{ item.monto | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</ng-container>
                   <ng-container *ngIf="item.monto <= 0">-</ng-container>
                 </td>
-                <td class="text-end text-danger">
+                <td class="text-end text-danger" [class.conciliacion-match-cell]="isMontoCoincidente(item)">
                   <ng-container *ngIf="item.monto < 0">{{ (item.monto * -1) | currency:'ARS':'symbol':'1.2-2':'es-AR' }}</ng-container>
                   <ng-container *ngIf="item.monto >= 0">-</ng-container>
                 </td>

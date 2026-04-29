@@ -141,7 +141,7 @@ export class CajaService {
   syncRegistroPagoTransferencia(
     registroId: string,
     ordenPago: number,
-    patch: Pick<RegistroPagoDetalle, 'nroOperacion' | 'fechaTransferencia'>
+    patch: Pick<RegistroPagoDetalle, 'nroOperacion' | 'fechaTransferencia' | 'nroCuit'>
   ): boolean {
     const targetRegistroId = String(registroId || '').trim();
     const targetOrden = Number(ordenPago || 0);
@@ -151,6 +151,7 @@ export class CajaService {
 
     const normalizedOperacion = this.normalizeOperacionTransferencia(patch.nroOperacion);
     const normalizedFecha = String(patch.fechaTransferencia || '').trim() || undefined;
+    const normalizedCuit = this.normalizeCuitTransferencia(patch.nroCuit);
     let changed = false;
     const now = new Date().toISOString();
 
@@ -169,12 +170,14 @@ export class CajaService {
       const nextPago: RegistroPagoDetalle = {
         ...pagoActual,
         nroOperacion: normalizedOperacion || pagoActual.nroOperacion,
-        fechaTransferencia: normalizedFecha || pagoActual.fechaTransferencia
+        fechaTransferencia: normalizedFecha || pagoActual.fechaTransferencia,
+        nroCuit: normalizedCuit || pagoActual.nroCuit
       };
 
       if (
         nextPago.nroOperacion === pagoActual.nroOperacion
         && nextPago.fechaTransferencia === pagoActual.fechaTransferencia
+        && nextPago.nroCuit === pagoActual.nroCuit
       ) {
         return registro;
       }

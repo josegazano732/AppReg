@@ -4,7 +4,7 @@ import { SyncCollectionRepository } from '../repositories/sync-collection.reposi
 import { LoggerService } from './logger.service';
 import { SupabaseService } from './supabase.service';
 import { CajaService } from './caja.service';
-import { MovimientoBancario, Registro, RegistroPagoDetalle } from '../../shared/models/finance.model';
+import { ConciliacionBancariaHistorial, MovimientoBancario, Registro, RegistroPagoDetalle } from '../../shared/models/finance.model';
 
 interface PagoTransferenciaCandidato {
   registroId: string;
@@ -17,6 +17,25 @@ interface PagoTransferenciaCandidato {
   nroOperacion?: string;
   nroCuit?: string;
 }
+
+type MovimientoImportable = Omit<
+  MovimientoBancario,
+  | 'id'
+  | 'importKey'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'primeraImportacionAt'
+  | 'ultimaImportacionAt'
+  | 'importBatchId'
+  | 'vecesImportado'
+  | 'conciliacionEstado'
+  | 'conciliadoRegistroId'
+  | 'conciliadoPagoOrden'
+  | 'conciliadoAt'
+  | 'conciliacionProceso'
+  | 'conciliacionCerradaAt'
+  | 'conciliacionCerradaObservacion'
+>;
 
 export interface OpcionConciliacionManual extends PagoTransferenciaCandidato {
   motivoManual: string;
@@ -50,12 +69,17 @@ export interface ResultadoConciliacionBancaria {
 @Injectable({ providedIn: 'root' })
 export class ConciliacionBancariaService {
   private readonly STORAGE_KEY = 'appreg.movimientos-bancarios';
+  private readonly STORAGE_HISTORY_KEY = 'appreg.conciliacion-bancaria-historial';
   private readonly TABLE = 'movimientos_bancarios';
+  private readonly TABLE_HISTORY = 'conciliacion_bancaria_historial';
   private readonly MATCH_WINDOW_DAYS = 15;
 
   private readonly repository: SyncCollectionRepository<MovimientoBancario>;
+  private readonly historyRepository: SyncCollectionRepository<ConciliacionBancariaHistorial>;
   private movimientos$ = new BehaviorSubject<MovimientoBancario[]>([]);
   movimientos = this.movimientos$.asObservable();
+  private historial$ = new BehaviorSubject<ConciliacionBancariaHistorial[]>([]);
+  historial = this.historial$.asObservable();
 
   constructor(
     private supabase: SupabaseService,
@@ -71,8 +95,18 @@ export class ConciliacionBancariaService {
       supabase: this.supabase,
       logger: this.logger
     });
+    this.historyRepository = new SyncCollectionRepository<ConciliacionBancariaHistorial>({
+      storageKey: this.STORAGE_HISTORY_KEY,
+      table: this.TABLE_HISTORY,
+      conflictKey: 'id',
+      orderBy: 'createdAt',
+      normalizeList: list => this.normalizeHistorial(list),
+      supabase: this.supabase,
+      logger: this.logger
+    });
 
     this.movimientos$.next(this.repository.loadLocal());
+    this.historial$.next(this.historyRepository.loadLocal());
     this.hydrateFromSupabase();
     this.conciliarAutomaticamente();
   }
@@ -81,41 +115,100 @@ export class ConciliacionBancariaService {
     return this.movimientos$.getValue();
   }
 
+  getHistorialSnapshot(): ConciliacionBancariaHistorial[] {
+    return this.historial$.getValue();
+  }
+
   updateMovimientos(list: MovimientoBancario[]) {
     const safe = this.repository.save(list || []);
     this.movimientos$.next(safe);
   }
 
-  importMovimientos(list: Array<Omit<MovimientoBancario, 'id' | 'createdAt' | 'updatedAt' | 'conciliacionEstado' | 'conciliadoRegistroId' | 'conciliadoPagoOrden' | 'conciliadoAt' | 'conciliacionProceso' | 'conciliacionCerradaAt' | 'conciliacionCerradaObservacion'>>) {
+  private updateHistorial(list: ConciliacionBancariaHistorial[]) {
+    const safe = this.historyRepository.save(list || []);
+    this.historial$.next(safe);
+  }
+
+  importMovimientos(list: MovimientoImportable[]) {
     const current = this.getMovimientosSnapshot();
-    const imported = (list || []).map(item => {
-      const createdAt = new Date().toISOString();
-      return {
-        ...item,
-        id: crypto.randomUUID(),
-        createdAt,
-        updatedAt: createdAt,
-        conciliacionEstado: 'PENDIENTE' as const,
-        conciliadoRegistroId: undefined,
-        conciliadoPagoOrden: undefined,
-        conciliadoAt: undefined,
-        conciliacionProceso: 'ABIERTO' as const,
-        conciliacionCerradaAt: undefined,
-        conciliacionCerradaObservacion: undefined
-      };
+    const now = new Date().toISOString();
+    const batchId = this.buildImportBatchId(now);
+    const currentByImportKey = new Map(current.map(item => [item.importKey || this.buildImportKey(item), item]));
+    const eventos: ConciliacionBancariaHistorial[] = [];
+
+    (list || []).forEach(item => {
+      const importKey = this.buildImportKey(item);
+      const existing = currentByImportKey.get(importKey);
+      const nextItem: MovimientoBancario = existing
+        ? {
+            ...existing,
+            fecha: this.normalizeFecha(item.fecha || existing.fecha),
+            banco: String(item.banco || '').trim(),
+            cuenta: String(item.cuenta || '').trim(),
+            descripcion: String(item.descripcion || '').trim() || existing.descripcion,
+            monto: Number(item.monto || 0),
+            tipo: Number(item.monto || 0) < 0 || item.tipo === 'DEBITO' ? 'DEBITO' : 'CREDITO',
+            nroOperacion: this.normalizeOperacion(item.nroOperacion),
+            referenciaExterna: String(item.referenciaExterna || '').trim(),
+            origenImportacion: String(item.origenImportacion || existing.origenImportacion || '').trim() || 'IMPORTACION_PDF',
+            importKey,
+            updatedAt: now,
+            ultimaImportacionAt: now,
+            importBatchId: batchId,
+            vecesImportado: Math.max(1, Number(existing.vecesImportado || 1)) + 1
+          }
+        : {
+            ...item,
+            id: crypto.randomUUID(),
+            importKey,
+            createdAt: now,
+            updatedAt: now,
+            primeraImportacionAt: now,
+            ultimaImportacionAt: now,
+            importBatchId: batchId,
+            vecesImportado: 1,
+            conciliacionEstado: 'PENDIENTE' as const,
+            conciliadoRegistroId: undefined,
+            conciliadoPagoOrden: undefined,
+            conciliadoAt: undefined,
+            conciliacionProceso: 'ABIERTO' as const,
+            conciliacionCerradaAt: undefined,
+            conciliacionCerradaObservacion: undefined
+          };
+
+      currentByImportKey.set(importKey, nextItem);
+      eventos.push(this.buildHistorialEvent(existing ? 'REIMPORTADO' : 'IMPORTADO', nextItem, {
+        observacion: existing ? 'El movimiento importado se actualizo por reimportacion.' : 'Alta inicial del movimiento en staging operativo.',
+        payload: {
+          importBatchId: batchId,
+          vecesImportado: nextItem.vecesImportado,
+          reemplazoRegistroPrevio: Boolean(existing)
+        }
+      }));
     });
 
-    this.updateMovimientos([...current, ...imported]);
+    this.updateMovimientos([...currentByImportKey.values()]);
+    this.appendHistorial(eventos);
     this.conciliarAutomaticamente();
   }
 
   removeMovimiento(id: string) {
+    const movimiento = this.getMovimientosSnapshot().find(item => item.id === id);
     this.updateMovimientos(this.getMovimientosSnapshot().filter(item => item.id !== id));
+    if (movimiento) {
+      this.appendHistorial([
+        this.buildHistorialEvent('ELIMINACION', movimiento, {
+          observacion: 'El movimiento fue eliminado del staging operativo.'
+        })
+      ]);
+    }
   }
 
   async clearAllData() {
     await this.repository.clear({ column: 'id', operator: 'neq', value: '' });
+    await this.historyRepository.clear({ column: 'id', operator: 'neq', value: '' });
     this.movimientos$.next([]);
+    this.historial$.next([]);
   }
 
   aplicarConciliacionManual(movimientoId: string, registroId: string, ordenPago: number) {
@@ -125,7 +218,7 @@ export class ConciliacionBancariaService {
       throw new Error('El pago seleccionado ya no existe para conciliacion manual.');
     }
 
-    this.linkMovimientoConPago(movimientoId, candidato);
+    this.linkMovimientoConPago(movimientoId, candidato, 'CONCILIACION_MANUAL');
   }
 
   aplicarConciliacionDesdePago(registroId: string, ordenPago: number, movimientoId: string) {
@@ -134,7 +227,7 @@ export class ConciliacionBancariaService {
       throw new Error('El pago seleccionado ya no existe para conciliacion.');
     }
 
-    this.linkMovimientoConPago(movimientoId, pago);
+    this.linkMovimientoConPago(movimientoId, pago, 'CONCILIACION_MANUAL');
   }
 
   buildOpcionesMovimientosParaPago(registroId: string, ordenPago: number): OpcionMovimientoConciliacion[] {
@@ -160,7 +253,11 @@ export class ConciliacionBancariaService {
       });
   }
 
-  private linkMovimientoConPago(movimientoId: string, candidato: PagoTransferenciaCandidato) {
+  private linkMovimientoConPago(
+    movimientoId: string,
+    candidato: PagoTransferenciaCandidato,
+    evento: ConciliacionBancariaHistorial['evento']
+  ) {
     const movimiento = this.getMovimientosSnapshot().find(item => item.id === movimientoId);
     if (!movimiento) {
       throw new Error('El movimiento bancario ya no existe.');
@@ -172,7 +269,8 @@ export class ConciliacionBancariaService {
 
     this.caja.syncRegistroPagoTransferencia(candidato.registroId, candidato.ordenPago, {
       nroOperacion: movimiento.nroOperacion,
-      fechaTransferencia: movimiento.fecha
+      fechaTransferencia: movimiento.fecha,
+      nroCuit: this.resolveMovimientoCuit(movimiento)
     });
 
     const now = new Date().toISOString();
@@ -208,10 +306,28 @@ export class ConciliacionBancariaService {
     });
 
     this.updateMovimientos(next);
+    const movimientoConciliado = next.find(item => item.id === movimientoId);
+    if (movimientoConciliado) {
+      this.appendHistorial([
+        this.buildHistorialEvent(evento, movimientoConciliado, {
+          registroId: candidato.registroId,
+          ordenPago: candidato.ordenPago,
+          observacion: 'El movimiento quedo conciliado y auditado desde el flujo operativo.',
+          payload: {
+            candidatoFecha: candidato.fecha,
+            candidatoMonto: candidato.monto,
+            candidatoNroOperacion: candidato.nroOperacion,
+            candidatoNroCuit: candidato.nroCuit,
+            origen: 'OPERACION'
+          }
+        })
+      ]);
+    }
     this.conciliarAutomaticamente();
   }
 
   liberarConciliacion(movimientoId: string) {
+    const movimientoAnterior = this.getMovimientosSnapshot().find(item => item.id === movimientoId);
     const now = new Date().toISOString();
     const next = this.getMovimientosSnapshot().map(item => {
       if (item.id !== movimientoId) {
@@ -230,6 +346,22 @@ export class ConciliacionBancariaService {
     });
 
     this.updateMovimientos(next);
+    if (movimientoAnterior) {
+      this.appendHistorial([
+        this.buildHistorialEvent('LIBERACION', {
+          ...movimientoAnterior,
+          conciliacionEstado: 'PENDIENTE',
+          conciliadoRegistroId: undefined,
+          conciliadoPagoOrden: undefined,
+          conciliadoAt: undefined,
+          updatedAt: now
+        }, {
+          registroId: movimientoAnterior.conciliadoRegistroId,
+          ordenPago: movimientoAnterior.conciliadoPagoOrden,
+          observacion: 'Se libero manualmente la conciliacion del movimiento.'
+        })
+      ]);
+    }
     this.conciliarAutomaticamente();
   }
 
@@ -260,6 +392,16 @@ export class ConciliacionBancariaService {
     });
 
     this.updateMovimientos(next);
+    const movimientoCerrado = next.find(item => item.id === movimientoId);
+    if (movimientoCerrado) {
+      this.appendHistorial([
+        this.buildHistorialEvent('CIERRE_PROCESO', movimientoCerrado, {
+          registroId: movimientoCerrado.conciliadoRegistroId,
+          ordenPago: movimientoCerrado.conciliadoPagoOrden,
+          observacion: nota || 'Proceso conciliado y cerrado manualmente.'
+        })
+      ]);
+    }
     this.conciliarAutomaticamente();
   }
 
@@ -278,6 +420,16 @@ export class ConciliacionBancariaService {
     });
 
     this.updateMovimientos(next);
+    const movimientoReabierto = next.find(item => item.id === movimientoId);
+    if (movimientoReabierto) {
+      this.appendHistorial([
+        this.buildHistorialEvent('REAPERTURA_PROCESO', movimientoReabierto, {
+          registroId: movimientoReabierto.conciliadoRegistroId,
+          ordenPago: movimientoReabierto.conciliadoPagoOrden,
+          observacion: 'Proceso reabierto para nueva revision.'
+        })
+      ]);
+    }
     this.conciliarAutomaticamente();
   }
 
@@ -336,11 +488,16 @@ export class ConciliacionBancariaService {
       });
 
     this.syncPagosConciliados(next);
+    const eventos = this.buildHistorialEventosAutomaticos(movimientos, next);
 
     if (changed) {
       this.updateMovimientos(next);
     } else {
       this.movimientos$.next(this.normalizeMovimientos(next));
+    }
+
+    if (eventos.length) {
+      this.appendHistorial(eventos);
     }
   }
 
@@ -547,9 +704,63 @@ export class ConciliacionBancariaService {
       .forEach(item => {
         this.caja.syncRegistroPagoTransferencia(String(item.conciliadoRegistroId), Number(item.conciliadoPagoOrden), {
           nroOperacion: item.nroOperacion,
-          fechaTransferencia: item.fecha
+          fechaTransferencia: item.fecha,
+          nroCuit: this.resolveMovimientoCuit(item)
         });
       });
+  }
+
+  private appendHistorial(eventos: ConciliacionBancariaHistorial[]) {
+    if (!eventos.length) {
+      return;
+    }
+
+    this.updateHistorial([...this.getHistorialSnapshot(), ...eventos]);
+  }
+
+  private buildHistorialEventosAutomaticos(
+    previos: MovimientoBancario[],
+    actuales: MovimientoBancario[]
+  ): ConciliacionBancariaHistorial[] {
+    const previosPorId = new Map(previos.map(item => [item.id, item]));
+
+    return actuales.flatMap(actual => {
+      const previo = previosPorId.get(actual.id);
+      if (!previo) {
+        return [];
+      }
+
+      const previoEstado = previo.conciliacionEstado || 'PENDIENTE';
+      const actualEstado = actual.conciliacionEstado || 'PENDIENTE';
+      const previoLink = `${previo.conciliadoRegistroId || ''}-${Number(previo.conciliadoPagoOrden || 0)}`;
+      const actualLink = `${actual.conciliadoRegistroId || ''}-${Number(actual.conciliadoPagoOrden || 0)}`;
+
+      if (previoEstado === actualEstado && previoLink === actualLink) {
+        return [];
+      }
+
+      if (actualEstado === 'CONCILIADO' && actual.conciliadoRegistroId && actual.conciliadoPagoOrden) {
+        return [
+          this.buildHistorialEvent('CONCILIACION_AUTOMATICA', actual, {
+            registroId: actual.conciliadoRegistroId,
+            ordenPago: actual.conciliadoPagoOrden,
+            observacion: 'Conciliacion automatica recalculada y persistida.'
+          })
+        ];
+      }
+
+      if (previoEstado === 'CONCILIADO') {
+        return [
+          this.buildHistorialEvent('LIBERACION', actual, {
+            registroId: previo.conciliadoRegistroId,
+            ordenPago: previo.conciliadoPagoOrden,
+            observacion: 'El vinculo previo se libero durante el recalculo automatico.'
+          })
+        ];
+      }
+
+      return [];
+    });
   }
 
   private buildProcesoAbiertoPatch(): Pick<MovimientoBancario, 'conciliacionProceso' | 'conciliacionCerradaAt' | 'conciliacionCerradaObservacion'> {
@@ -701,10 +912,7 @@ export class ConciliacionBancariaService {
     const diffDias = this.daysDiff(pago.fecha, movimiento.fecha);
     const movimientoCuitDetectado = this.resolveMovimientoCuit(movimiento);
     const exactCuit = Boolean(pago.nroCuit && movimientoCuitDetectado && pago.nroCuit === movimientoCuitDetectado);
-
-    if (!this.isCuitCompatible(movimiento, pago)) {
-      return null;
-    }
+    const cuitCompatible = this.isCuitCompatible(movimiento, pago);
 
     if (exactOperacion) {
       priority += 100;
@@ -730,6 +938,8 @@ export class ConciliacionBancariaService {
     if (exactCuit) {
       priority += 30;
       reasons.push('mismo CUIT');
+    } else if (!cuitCompatible && pago.nroCuit && movimientoCuitDetectado) {
+      reasons.push('CUIT distinto');
     }
 
     const elegible = exactOperacion || (exactMonto && diffDias <= 30) || (exactMonto && exactCuit) || (exactCuit && diffDias <= this.MATCH_WINDOW_DAYS);
@@ -821,13 +1031,22 @@ export class ConciliacionBancariaService {
       const conciliacionProceso = conciliacionEstado === 'CONCILIADO'
         ? this.normalizeProceso(item.conciliacionProceso, conciliacionCerradaAt)
         : 'ABIERTO';
+      const createdAt = item.createdAt || new Date().toISOString();
+      const importKey = String(item.importKey || '').trim() || this.buildImportKey(item);
+      const primeraImportacionAt = item.primeraImportacionAt || createdAt;
+      const ultimaImportacionAt = item.ultimaImportacionAt || item.updatedAt || createdAt;
 
       return {
         ...item,
         id: item.id || crypto.randomUUID(),
+        importKey,
         fecha: this.normalizeFecha(item.fecha || this.toDateKey(item.createdAt)),
-        createdAt: item.createdAt || new Date().toISOString(),
-        updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
+        createdAt,
+        updatedAt: item.updatedAt || createdAt,
+        primeraImportacionAt,
+        ultimaImportacionAt,
+        importBatchId: String(item.importBatchId || '').trim() || undefined,
+        vecesImportado: Math.max(1, Number(item.vecesImportado || 1)),
         banco: String(item.banco || '').trim(),
         cuenta: String(item.cuenta || '').trim(),
         descripcion: String(item.descripcion || '').trim() || 'SIN DESCRIPCION',
@@ -847,6 +1066,30 @@ export class ConciliacionBancariaService {
           : undefined
       };
     });
+  }
+
+  private normalizeHistorial(list: ConciliacionBancariaHistorial[]): ConciliacionBancariaHistorial[] {
+    return (list || [])
+      .map(item => ({
+        ...item,
+        id: item.id || crypto.randomUUID(),
+        movimientoId: String(item.movimientoId || '').trim(),
+        movimientoImportKey: String(item.movimientoImportKey || '').trim() || undefined,
+        createdAt: item.createdAt || new Date().toISOString(),
+        registroId: String(item.registroId || '').trim() || undefined,
+        ordenPago: Number(item.ordenPago || 0) || undefined,
+        observacion: String(item.observacion || '').trim() || undefined,
+        movimientoFecha: this.normalizeFecha(item.movimientoFecha),
+        movimientoDescripcion: String(item.movimientoDescripcion || '').trim() || 'SIN DESCRIPCION',
+        movimientoMonto: Number(item.movimientoMonto || 0),
+        movimientoTipo: item.movimientoTipo === 'DEBITO' ? 'DEBITO' : 'CREDITO',
+        movimientoNroOperacion: this.normalizeOperacion(item.movimientoNroOperacion) || undefined,
+        movimientoCuitDetectado: this.normalizeCuit(item.movimientoCuitDetectado),
+        movimientoBanco: String(item.movimientoBanco || '').trim() || undefined,
+        movimientoCuenta: String(item.movimientoCuenta || '').trim() || undefined,
+        payload: item.payload || undefined
+      }) as ConciliacionBancariaHistorial)
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   }
 
   private normalizeEstado(value?: string): MovimientoBancario['conciliacionEstado'] {
@@ -911,8 +1154,89 @@ export class ConciliacionBancariaService {
       .toUpperCase();
   }
 
+  private buildImportKey(value: Pick<MovimientoBancario, 'fecha' | 'tipo' | 'nroOperacion' | 'referenciaExterna' | 'descripcion' | 'monto' | 'banco' | 'cuenta'>): string {
+    const identity = this.normalizeOperacion(value.nroOperacion)
+      || this.normalizeOperacion(value.referenciaExterna)
+      || this.normalizeOperacion(String(value.descripcion || '').slice(0, 80));
+    const amountCents = Math.round(Math.abs(Number(value.monto || 0)) * 100);
+    const base = [
+      this.normalizeFecha(value.fecha),
+      value.tipo === 'DEBITO' ? 'DEBITO' : 'CREDITO',
+      identity || 'SIN_IDENTIDAD',
+      String(amountCents),
+      this.normalizeText(value.banco),
+      this.normalizeText(value.cuenta)
+    ].join('|');
+
+    return `MB-${this.hashValue(base)}`;
+  }
+
+  private buildImportBatchId(now: string): string {
+    return `LOTE-${now.replace(/[^0-9]/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+
+  private hashValue(value: string): string {
+    let hash = 2166136261;
+    const input = String(value || '');
+
+    for (let index = 0; index < input.length; index += 1) {
+      hash ^= input.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return (hash >>> 0).toString(16).padStart(8, '0').toUpperCase();
+  }
+
+  private buildHistorialEvent(
+    evento: ConciliacionBancariaHistorial['evento'],
+    movimiento: MovimientoBancario,
+    options?: {
+      registroId?: string;
+      ordenPago?: number;
+      observacion?: string;
+      payload?: Record<string, unknown>;
+    }
+  ): ConciliacionBancariaHistorial {
+    return {
+      id: crypto.randomUUID(),
+      movimientoId: movimiento.id,
+      movimientoImportKey: movimiento.importKey,
+      evento,
+      createdAt: new Date().toISOString(),
+      registroId: options?.registroId,
+      ordenPago: options?.ordenPago,
+      observacion: options?.observacion,
+      movimientoFecha: movimiento.fecha,
+      movimientoDescripcion: movimiento.descripcion,
+      movimientoMonto: Number(movimiento.monto || 0),
+      movimientoTipo: movimiento.tipo === 'DEBITO' ? 'DEBITO' : 'CREDITO',
+      movimientoNroOperacion: movimiento.nroOperacion,
+      movimientoCuitDetectado: this.resolveMovimientoCuit(movimiento),
+      movimientoBanco: movimiento.banco,
+      movimientoCuenta: movimiento.cuenta,
+      payload: {
+        conciliacionEstado: movimiento.conciliacionEstado,
+        conciliacionProceso: movimiento.conciliacionProceso,
+        conciliadoRegistroId: movimiento.conciliadoRegistroId,
+        conciliadoPagoOrden: movimiento.conciliadoPagoOrden,
+        conciliadoAt: movimiento.conciliadoAt,
+        origenImportacion: movimiento.origenImportacion,
+        primeraImportacionAt: movimiento.primeraImportacionAt,
+        ultimaImportacionAt: movimiento.ultimaImportacionAt,
+        importBatchId: movimiento.importBatchId,
+        vecesImportado: movimiento.vecesImportado,
+        ...(options?.payload || {})
+      }
+    };
+  }
+
   private async hydrateFromSupabase() {
     const rows = await this.repository.hydrate();
+    const historial = await this.historyRepository.hydrate();
+    if (historial) {
+      this.historial$.next(historial);
+    }
+
     if (!rows) {
       return;
     }
